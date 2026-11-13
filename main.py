@@ -22,7 +22,7 @@ import faster_whisper
 # 4. Inisialisasi modul GUI PyQt5
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt
-from src.gui.main_window import MainWindow
+from src.gui.floating_window import FloatingSTTWindow
 
 def main():
     # Standar High-DPI: harus dipanggil SEBELUM QApplication diinisialisasi
@@ -33,7 +33,7 @@ def main():
         pass
 
     app = QApplication(sys.argv)
-    window = MainWindow()
+    window = FloatingSTTWindow()
     window.show()
     sys.exit(app.exec_())
 

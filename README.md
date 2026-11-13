@@ -1,27 +1,32 @@
-# Live Speech to Text (STT)
+# Live Speech to Text (Floating Voice Typing)
 
-Aplikasi Desktop Helper untuk transkripsi suara langsung menjadi teks secara *real-time* (*Voice Typing*) dengan pemrosesan kata demi kata secara mengalir seperti fitur pengetikan suara di smartphone. Dirancang agar Anda tidak perlu mengetik manual panjang lebar saat ingin mengirim pesan ke orang lain di WhatsApp, Telegram, email, maupun platform lainnya.
+Aplikasi Desktop Floating Helper untuk pengetikan suara (*Voice Typing*) langsung ke kursor aktif di aplikasi apa pun (WhatsApp, Telegram, Microsoft Word, Chrome, Notepad, Discord, dll.) secara *real-time* bertenaga Whisper AI dan akselerasi GPU NVIDIA RTX.
 
 ---
 
 ## Fitur Utama
 
-- **Real-Time Streaming STT (Per-Kata / Interim Preview)**: Kata-kata yang Anda ucapkan langsung muncul seketika di layar tanpa perlu menunggu Anda berhenti bicara.
-- **Auto-Commit Sentence (VAD)**: Begitu Anda jeda atau berhenti bicara sejenak (~0.7 detik), kalimat tersebut otomatis dikunci (*committed*) dan sistem langsung siap untuk kalimat berikutnya.
-- **Murni Speech to Text (STT)**: Menghasilkan teks bersih tanpa penanda waktu (*timestamp*), siap langsung dikirim sebagai pesan.
+- **Floating & Always on Top**:
+  - Jendela ringkas melayang (*frameless & draggable*) yang selalu berada di atas jendela lain.
+  - Desain modern bernuansa *Dark Navy* dengan sudut membulat elegan.
+  - Dilengkapi animasi gelombang suara (*cyan neon waveform visualizer*) yang bergerak dinamis saat Anda berbicara.
+- **Direct Typing ke Kursor Aktif**:
+  - Mengetikkan kata-kata langsung ke posisi kursor yang sedang aktif di aplikasi lain tanpa perlu copy-paste.
+  - Menggunakan algoritma *differential typing* cerdas berbasis *Longest Common Prefix* untuk meminimalkan penekanan tombol backspace jika ada revisi kata dari Whisper.
+- **Pembersihan Tanda Baca Cerdas**:
+  - Tanda baca otomatis yang dihasilkan oleh Whisper (seperti titik, koma, tanda tanya, tanda seru yang tidak diinginkan) otomatis dihilangkan.
+  - Tanda hubung pada kata ulang bahasa Indonesia (misal: `teman-teman`, `jalan-jalan`) tetap dipertahankan.
+- **Global Hotkey (Shortcut Bebas Sentuh Mouse)**:
+  - Tekan tombol **`F8`** (atau tombol shortcut lain yang dikonfigurasi) dari aplikasi mana saja untuk langsung Mulai (*Start*) atau Berhenti (*End*) merekam tanpa kehilangan fokus kursor.
+- **Popup Pengaturan Terpadu (Ikon ⚙)**:
+  - Ganti tombol Shortcut Global (`F8`, `F9`, `F10`, `F12`, `Ctrl+Shift+Space`, dll).
+  - Pilih Model Whisper (`small`, `base`, `medium`, `tiny`).
+  - Pilih Bahasa (`id`, `en`, `auto`).
+  - Pilih Perangkat Mikrofon yang diinginkan.
+  - Pilih Mode Pengetikan (*Streaming per-kata* atau *Per-penggalan kalimat*).
 - **Akselerasi GPU Mandiri (NVIDIA CUDA)**:
-  - Mendukung GPU NVIDIA RTX (seperti RTX 3050) dengan komputasi `float16` berkecepatan tinggi (~140ms di model `small`, ~44ms di model `base`).
-  - Dilengkapi library cuBLAS & cuDNN terintegrasi di virtual environment tanpa perlu instalasi CUDA Toolkit global yang rumit.
-  - Fallback otomatis ke CPU (`int8`) jika dijalankan pada perangkat tanpa GPU NVIDIA.
-- **Pilihan Model & Bahasa Fleksibel**:
-  - Model Whisper: `small` (default, sangat responsif & akurat), `base` (ultra-cepat), `medium` (presisi tinggi), atau `tiny`.
-  - Pilihan bahasa: Bahasa Indonesia (`id`), Bahasa Inggris (`en`), atau deteksi otomatis (`auto`).
-- **Fitur Salin Cepat (Clipboard)**:
-  - Opsi *Otomatis salin ke clipboard saat Berhenti*.
-  - Tombol manual *Salin Teks (Clipboard)* untuk memudahkan *paste* instan (`Ctrl+V`) ke aplikasi chat.
-- **Antarmuka Bersih & Responsif**:
-  - GUI PyQt5 yang ringan dengan tombol *Start* (Mulai) dan *End* (Selesai).
-  - Indikator bar level input suara untuk memastikan mic aktif.
+  - Latensi super instan di kartu grafis NVIDIA RTX (misal RTX 3050): hanya ~44ms (model `base`) dan ~140ms (model `small`).
+  - Paket cuBLAS & cuDNN terpasang mandiri di virtual environment tanpa perlu instalasi CUDA Toolkit global.
 
 ---
 
@@ -29,46 +34,35 @@ Aplikasi Desktop Helper untuk transkripsi suara langsung menjadi teks secara *re
 
 ```text
 live-speech-to-text/
-├── main.py                     # Entry point aplikasi
-├── run.bat                     # Script batch sekali klik untuk menjalankan aplikasi
-├── requirements.txt            # Daftar dependensi lengkap
-├── README.md                   # Dokumentasi project
+├── main.py                             # Entry point aplikasi
+├── run.bat                             # Script batch sekali klik untuk menjalankan aplikasi
+├── requirements.txt                    # Daftar dependensi lengkap
+├── README.md                           # Dokumentasi project
 └── src/
     ├── core/
-    │   ├── audio_capture.py    # Modul stream mikrofon (sounddevice)
-    │   ├── cuda_setup.py       # Pengatur path DLL CUDA/cuDNN mandiri
-    │   ├── live_worker.py      # QThread worker streaming per-kata & auto-commit
-    │   └── stt_engine.py       # Engine faster-whisper (transkripsi interim & final)
+    │   ├── audio_capture.py            # Modul stream mikrofon (sounddevice)
+    │   ├── config_manager.py           # Pengelola file konfigurasi config.json
+    │   ├── cuda_setup.py               # Pengatur path DLL CUDA/cuDNN mandiri
+    │   ├── focus_manager.py            # Manajemen fokus jendela & WS_EX_NOACTIVATE
+    │   ├── hotkey_manager.py           # Pendengar shortcut keyboard global
+    │   ├── live_worker.py              # QThread worker streaming per-kata & auto-commit
+    │   ├── stt_engine.py               # Engine faster-whisper (transkripsi interim & final)
+    │   ├── text_cleaner.py             # Pembersih tanda baca otomatis STT
+    │   └── virtual_typist.py           # Pengetik virtual ke kursor aktif
     └── gui/
-        └── main_window.py      # Antarmuka GUI PyQt5
+        ├── components/
+        │   └── waveform_visualizer.py  # Animasi visualizer audio neon cyan
+        ├── dialogs/
+        │   ├── about_dialog.py         # Dialog tentang aplikasi & kredit pengembang
+        │   └── settings_dialog.py      # Dialog popup pengaturan hotkey & audio
+        ├── floating_window.py          # Jendela utama Floating App (Dual-State)
+        └── main_window.py              # Jendela alternatif mode standalone
 ```
 
 ---
 
-## Persyaratan Sistem
+## Cara Menjalankan
 
-- **OS**: Windows 10 / 11 (64-bit)
-- **Python**: Versi 3.10 – 3.13
-- **Hardware**:
-  - Mikrofon (internal atau eksternal)
-  - Kartu grafis NVIDIA RTX / GTX (Sangat direkomendasikan untuk transkripsi instan dengan GPU) atau CPU multi-core.
-
----
-
-## Cara Instalasi & Menjalankan
-
-### 1. Buat Virtual Environment & Install Dependensi
-Buka terminal / PowerShell di folder project ini:
-
-```powershell
-# 1. Buat virtual environment
-python -m venv venv
-
-# 2. Install seluruh dependensi
-.\venv\Scripts\python.exe -m pip install -r requirements.txt
-```
-
-### 2. Menjalankan Aplikasi
 Cukup klik ganda (double-click) file:
 ```text
 run.bat
@@ -82,14 +76,15 @@ Atau melalui terminal:
 
 ## Panduan Penggunaan
 
-1. Buka aplikasi via `run.bat`.
-2. Model default yang dipilih adalah `small` (sangat direkomendasikan untuk streaming kata-per-kata yang cepat dan akurat).
-3. Pastikan bahasa terpilih adalah `Indonesia (id)`.
-4. Klik tombol **Mulai Mendengarkan (Start)**.
-5. Mulailah berbicara ke mikrofon. Kata-kata yang Anda ucapkan akan langsung muncul seketika secara mengalir di layar.
-6. Saat Anda berhenti bicara sejenak, kalimat otomatis dikunci.
-7. Setelah selesai seluruh pesan, klik tombol **Selesai / Berhenti (End)**.
-8. Teks secara otomatis disalin ke clipboard, Anda tinggal menekan `Ctrl + V` pada aplikasi chat.
+1. Buka aplikasi via `run.bat`. Jendela melayang kecil akan tampil di layar Anda.
+2. Posisikan kursor Anda di tempat Anda ingin mengetik (misal: kolom chat WhatsApp atau dokumen Word).
+3. Mulai merekam dengan salah satu cara berikut:
+   - Tekan tombol keyboard **`F8`** (kursor tetap aktif di aplikasi target).
+   - Atau klik tombol **`▶ Start`** pada Floating App.
+4. Tampilan aplikasi akan beralih ke mode **`Listening...`** dengan visualizer gelombang suara aktif.
+5. Mulailah berbicara. Kata-kata yang Anda ucapkan akan langsung terketik secara *real-time* tepat di posisi kursor Anda.
+6. Untuk berhenti, tekan tombol **`F8`** lagi atau klik tombol **`■ End`**.
+7. Klik ikon gerigi (⚙) di pojok kiri bawah untuk mengatur shortcut, model, bahasa, atau mikrofon sesuai kenyamanan Anda.
 
 ---
 
