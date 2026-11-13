@@ -8,7 +8,8 @@ DEFAULT_CONFIG = {
     "model_size": "small",
     "language": "id",
     "audio_device": None,
-    "typing_mode": "streaming"  # 'streaming' (per-kata) atau 'sentence' (per-kalimat)
+    "typing_mode": "streaming",  # 'streaming' (per-kata) atau 'sentence' (per-kalimat)
+    "auto_stop_timeout_sec": 60  # Batas waktu hening (detik) sebelum auto-stop
 }
 
 def load_config() -> dict:

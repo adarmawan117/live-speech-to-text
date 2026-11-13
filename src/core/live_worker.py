@@ -15,11 +15,13 @@ class LiveSTTWorker(QThread):
     final_text_ready = pyqtSignal(str)     # Kalimat yang sudah selesai/dikunci
     audio_level = pyqtSignal(float)
     engine_ready = pyqtSignal(str)
+    auto_timeout = pyqtSignal()            # Dipicu jika 60 detik tidak ada input suara
 
-    def __init__(self, model_size: str = "small", language: str = "id", parent=None):
+    def __init__(self, model_size: str = "small", language: str = "id", timeout_sec: float = 60.0, parent=None):
         super().__init__(parent)
         self.model_size = model_size
         self.language = language
+        self.no_speech_timeout_sec = float(timeout_sec)
         self.audio_capture = None
         self.engine = None
         self.is_running = False
@@ -49,6 +51,7 @@ class LiveSTTWorker(QThread):
             phrase_start_time = None
             last_interim_time = 0.0
             last_interim_text = ""
+            last_speech_time = time.time()  # Waktu terakhir terdeteksi input suara
 
             sample_rate = 16000
 
@@ -67,6 +70,7 @@ class LiveSTTWorker(QThread):
                 current_time = time.time()
 
                 if rms > self.silence_threshold:
+                    last_speech_time = current_time
                     if not is_speaking:
                         is_speaking = True
                         phrase_start_time = current_time
@@ -97,6 +101,13 @@ class LiveSTTWorker(QThread):
                             silence_start_time = None
                             last_interim_text = ""
                             self.interim_text_ready.emit("")
+
+                    # Cek batas waktu hening tanpa suara (Auto-Timeout 60 detik)
+                    elif (current_time - last_speech_time) >= self.no_speech_timeout_sec:
+                        print(f"[LiveSTTWorker] Auto-timeout tercapai ({self.no_speech_timeout_sec}s hening). Menghentikan engine...", flush=True)
+                        self.status_changed.emit("Otomatis berhenti: tidak ada input suara selama 1 menit.")
+                        self.auto_timeout.emit()
+                        break
 
                 # Jika pengguna bicara tanpa henti melebihi durasi batas, kunci segmen
                 if is_speaking and phrase_start_time and (current_time - phrase_start_time) >= self.max_phrase_sec:

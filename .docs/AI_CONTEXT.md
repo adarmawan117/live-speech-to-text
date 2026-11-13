@@ -13,6 +13,7 @@
 *   **Audio Capture:** `sounddevice` (PortAudio wrapper, 16kHz mono float32, block-sliding buffer).
 *   **Virtual Input / Direct Typing:** Win32 API via `keyboard` & `ctypes` (`SendInput`, `VK_BACK`, `KEYEVENTF_UNICODE`).
 *   **Global Hotkey Listener:** `keyboard` (Win32 low-level keyboard hooks).
+*   **Inter-Process Communication (IPC):** Qt `QLocalServer` & `QLocalSocket` (Windows Named Pipes untuk Single Instance enforcement).
 *   **Icon & Graphic Rendering:** `PyQt5.QtSvg` (`QSvgRenderer`) dan `QPainter` anti-aliased rendering.
 *   **Packaging & Distribution:**
     *   `Live Speech to Text.vbs` (Silent launcher via `pythonw.exe`).
@@ -41,6 +42,7 @@ live-speech-to-text/
 │   │   ├── focus_manager.py            # Windows API: WS_EX_NOACTIVATE & restore active HWND
 │   │   ├── hotkey_manager.py           # Listener shortcut keyboard global (F8, unhook on exit)
 │   │   ├── live_worker.py              # QThread worker: streaming interim & final phrase commit
+│   │   ├── single_instance.py          # IPC Named Pipe controller untuk single instance aplikasi
 │   │   ├── stt_engine.py               # faster-whisper engine wrapper & _ENGINE_CACHE VRAM residency
 │   │   ├── text_cleaner.py             # Sanitasi tanda baca STT & preservasi kata ulang
 │   │   └── virtual_typist.py           # LCP differential typist ke kursor Windows aktif
@@ -197,6 +199,31 @@ Visualizer 19-bar cyan neon menggunakan formula kurva Gaussian dan modulasi sinu
 *   Folder `Output/` dan file binary setup `.exe` wajib dikarantina di `.gitignore`.
 *   `PrivilegesRequired=lowest` dipasang agar instalasi tidak memicu popup UAC Windows Administrator jika diinstal di tingkat pengguna.
 
+### R. Auto-Stop Silence Timeout (60 Detik Resource Saver)
+*   **The Problem:** Jika pengguna lupa menekan tombol Stop/End atau shortcut global, proses audio recording dan model Whisper tetap aktif di background, membebani utilisasi GPU/CPU komputer pengguna.
+*   **The Fix:**
+    1. Di [live_worker.py](../src/core/live_worker.py), catat `last_speech_time = time.time()` setiap kali amplitudo `rms > silence_threshold` terdeteksi.
+    2. Saat kondisi hening (`not is_speaking`) dan `(current_time - last_speech_time) >= self.no_speech_timeout_sec` (default 60.0 detik):
+       - Pancarkan sinyal `self.auto_timeout.emit()`.
+       - Update status info `"Otomatis berhenti: tidak ada input suara selama 1 menit."`.
+       - Break dari audio loop dan hentikan stream PortAudio.
+    3. Di [floating_window.py](../src/gui/floating_window.py), slot `on_auto_timeout()` memanggil `self.stop_recording()`, mengembalikan tampilan ke halaman Idle (ikon mic bulat biru), mengaktifkan kembali tombol minimize, dan memunculkan notifikasi balon tray `showMessage()` di Windows.
+    4. Nilai timeout dapat dikonfigurasi melalui `"auto_stop_timeout_sec": 60` di [config_manager.py](../src/core/config_manager.py).
+
+### S. Single Instance Application & IPC Named Pipe (`single_instance.py`)
+*   **The Goal:** Mencegah pengguna membuka lebih dari satu instance aplikasi yang dapat menyebabkan perebutan port audio mikrofon, duplikasi global keyboard hook `F8`, dan pemborosan VRAM GPU Whisper.
+*   **The Mechanism:**
+    1. Menggunakan protokol **Windows Named Pipe** via `QLocalServer` dan `QLocalSocket` di [src/core/single_instance.py](../src/core/single_instance.py) dengan server identifier `LiveSpeechToText_SingleInstance_Server`.
+    2. Saat aplikasi baru diluncurkan (`main.py`):
+       - Hubungkan `QLocalSocket` ke server.
+       - Jika terhubung (`waitForConnected(500) == True`), berarti ada instance yang sudah aktif.
+       - Panggil Win32 API `ctypes.windll.user32.AllowSetForegroundWindow(-1)` agar OS mengizinkan instance pertama memunculkan jendelanya ke depan.
+       - Kirim sinyal `b"ACTIVATE\n"`, lalu instance kedua langsung keluar secara bersih (`sys.exit(0)`).
+    3. Di instance pertama:
+       - `SingleInstanceController.message_received` terhubung ke `window.restore_from_tray()`.
+       - Jika jendela sedang diminimize (`isMinimized()`), kembalikan status jendela dengan `setWindowState`.
+       - Tampilkan jendela (`show()`), angkat ke tumpukan teratas (`raise_()`), aktifkan (`activateWindow()`), serta panggil `ShowWindow(hwnd, SW_RESTORE)` dan `SetForegroundWindow(hwnd)` via Win32 API untuk memastikan jendela tampil di layar pengguna.
+
 ---
 
 ## 4. Multi-Threading & Concurrency Architecture
@@ -213,14 +240,18 @@ Aplikasi ini menggunakan model multi-threading non-blocking yang ketat:
 [LiveSTTWorker (QThread)]
    ├── WhisperModel (CUDA float16 / CPU int8 via _ENGINE_CACHE)
    ├── RMS Audio Level Calculation
-   └── Dual-phase Transcription (Interim vs Commit)
+   ├── Dual-phase Transcription (Interim vs Commit)
+   └── 60s Silence Timeout Watchdog (auto-timeout logic)
        │
-       │ (PyQt Signals: interim_text_ready, final_text_ready, audio_level)
+       │ (PyQt Signals: interim_text_ready, final_text_ready, audio_level, auto_timeout)
        ▼
 [Main GUI Thread (QApplication)]
+   ├── FloatingSTTWindow (Dual-state: Hero Mic Idle vs Waveform Recording)
    ├── WaveformVisualizer (Update cyan neon animation at 30 FPS)
-   ├── FocusManager (Preserve target application HWND)
-   └── VirtualTypist (Win32 LCP keystroke execution via SendInput)
+   ├── FocusManager (Preserve & restore target application HWND, WS_EX_NOACTIVATE)
+   ├── VirtualTypist (Win32 LCP differential keystroke execution via SendInput)
+   ├── SingleInstanceController (QLocalServer IPC: restore_from_tray on duplicate launch)
+   └── SystemTrayIcon (QSystemTrayIcon: minimize-to-tray & auto-stop balloon alerts)
        │
        ▼
 [Active Windows Application (WhatsApp / Word / Chrome)]
@@ -240,7 +271,8 @@ File `config.json` bertindak sebagai *single source of truth* untuk pengaturan p
     "model_size": "small",
     "language": "id",
     "audio_device": null,
-    "typing_mode": "streaming"
+    "typing_mode": "streaming",
+    "auto_stop_timeout_sec": 60
 }
 ```
 
@@ -249,6 +281,7 @@ File `config.json` bertindak sebagai *single source of truth* untuk pengaturan p
 *   `language`: Kode bahasa ISO 639-1 (`"id"` untuk Indonesia, `"en"` untuk Inggris, `null` untuk auto-detect).
 *   `audio_device`: Indeks integer mic dari `sounddevice.query_devices()` atau `null` untuk default sistem.
 *   `typing_mode`: `"streaming"` (pengetikan live kata demi kata) atau `"sentence"` (ketik per-frase saat jeda).
+*   `auto_stop_timeout_sec`: Integer batas waktu hening tanpa suara sebelum proses transkripsi berhenti otomatis (default `60` detik).
 
 ---
 
@@ -306,6 +339,21 @@ Jika di masa depan Anda perlu memodifikasi atau menguji fungsi tertentu secara t
 3.  **Uji Coba Tangkap Audio Mikrofon:**
     ```powershell
     .\venv\Scripts\python.exe -c "import sounddevice as sd; print(sd.query_devices())"
+    ```
+4.  **Uji Coba Single Instance IPC Controller:**
+    ```powershell
+    .\venv\Scripts\python.exe -c "from src.core.single_instance import SingleInstanceController; s = SingleInstanceController(); print('Another instance running:', s.is_another_instance_running())"
+    # Ekspektasi: False (jika tidak ada instance) atau True (jika aplikasi sedang berjalan)
+    ```
+5.  **Uji Coba Konfigurasi Auto-Stop Timeout:**
+    ```powershell
+    .\venv\Scripts\python.exe -c "from src.core.config_manager import load_config; print('Auto-Stop Timeout:', load_config().get('auto_stop_timeout_sec', 60), 'detik')"
+    # Ekspektasi: Auto-Stop Timeout: 60 detik
+    ```
+6.  **Uji Coba Ketersediaan System Tray Windows:**
+    ```powershell
+    .\venv\Scripts\python.exe -c "from PyQt5.QtWidgets import QApplication, QSystemTrayIcon; import sys; app = QApplication(sys.argv); print('System Tray Available:', QSystemTrayIcon.isSystemTrayAvailable())"
+    # Ekspektasi: System Tray Available: True
     ```
 
 ---

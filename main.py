@@ -22,6 +22,7 @@ import faster_whisper
 # 4. Inisialisasi modul GUI PyQt5
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt
+from src.core.single_instance import SingleInstanceController
 from src.gui.floating_window import FloatingSTTWindow
 
 def main():
@@ -33,9 +34,23 @@ def main():
         pass
 
     app = QApplication(sys.argv)
+
+    # 5. Cek Single Instance: jika aplikasi sudah berjalan, buka jendela yang ada & keluar
+    single_instance = SingleInstanceController()
+    if single_instance.is_another_instance_running():
+        print("[SingleInstance] Aplikasi sudah berjalan. Mengaktifkan jendela instance yang ada...", flush=True)
+        sys.exit(0)
+
+    # Jalankan server lokal untuk mendengarkan jika ada instance baru yang dibuka nanti
+    single_instance.start_server()
+
     window = FloatingSTTWindow()
+    single_instance.message_received.connect(lambda msg: window.restore_from_tray())
     window.show()
-    sys.exit(app.exec_())
+
+    exit_code = app.exec_()
+    single_instance.cleanup()
+    sys.exit(exit_code)
 
 if __name__ == "__main__":
     main()

@@ -408,10 +408,22 @@ class FloatingSTTWindow(QWidget):
             )
 
     def restore_from_tray(self):
-        """Mengembalikan jendela aplikasi dari system tray ke layar."""
+        """Mengembalikan jendela aplikasi dari system tray atau background ke layar depan."""
+        if self.isMinimized():
+            self.setWindowState(self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive)
         self.show()
         self.raise_()
         self.activateWindow()
+
+        # Pastikan OS Windows membawa jendela ke lapisan terdepan
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                hwnd = int(self.winId())
+                ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE = 9
+                ctypes.windll.user32.SetForegroundWindow(hwnd)
+            except Exception:
+                pass
 
     def changeEvent(self, event):
         """Mencegah minimize sistem dari OS jika sedang merekam."""
@@ -466,11 +478,13 @@ class FloatingSTTWindow(QWidget):
         # 3. Jalankan STT Worker di background
         model_name = self.config.get("model_size", "small")
         language = self.config.get("language", "id")
+        timeout_sec = self.config.get("auto_stop_timeout_sec", 60)
 
-        self.worker = LiveSTTWorker(model_size=model_name, language=language, parent=self)
+        self.worker = LiveSTTWorker(model_size=model_name, language=language, timeout_sec=timeout_sec, parent=self)
         self.worker.interim_text_ready.connect(self.on_interim_text_ready)
         self.worker.final_text_ready.connect(self.on_final_text_ready)
         self.worker.audio_level.connect(self.visualizer.set_level)
+        self.worker.auto_timeout.connect(self.on_auto_timeout)
         self.worker.start()
 
     def stop_recording(self):
@@ -502,6 +516,17 @@ class FloatingSTTWindow(QWidget):
             self.worker = None
 
         self.virtual_typist.reset()
+
+    def on_auto_timeout(self):
+        """Dipanggil otomatis saat tidak ada input suara selama 1 menit."""
+        self.stop_recording()
+        if self.tray_icon is not None and self.tray_icon.isVisible():
+            self.tray_icon.showMessage(
+                "Live Speech to Text",
+                "Transkripsi dihentikan otomatis karena tidak ada input suara selama 1 menit.",
+                QSystemTrayIcon.Information,
+                3000
+            )
 
     def on_interim_text_ready(self, interim_text: str):
         """Menerima potongan kata live dan mengetikkan secara langsung ke kursor aktif."""
