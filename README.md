@@ -9,7 +9,12 @@ Aplikasi Desktop Floating Helper untuk pengetikan suara (*Voice Typing*) langsun
 - **Floating & Always on Top**:
   - Jendela ringkas melayang (*frameless & draggable*) yang selalu berada di atas jendela lain.
   - Desain modern bernuansa *Dark Navy* dengan sudut membulat elegan.
+  - Ikon aplikasi vektor premium SVG tajam tanpa pixelation.
   - Dilengkapi animasi gelombang suara (*cyan neon waveform visualizer*) yang bergerak dinamis saat Anda berbicara.
+- **System Tray & Minimize Protection**:
+  - Minimize otomatis menyembunyikan aplikasi ke System Tray (Taskbar pojok kanan).
+  - **Proteksi Rekam**: Aplikasi dilarang / tidak bisa diminimize saat fitur transkripsi sedang aktif (*Start*). Minimize hanya dapat dilakukan saat mode santai/idle.
+  - Klik atau double-click icon tray untuk menampilkan kembali jendela.
 - **Direct Typing ke Kursor Aktif**:
   - Mengetikkan kata-kata langsung ke posisi kursor yang sedang aktif di aplikasi lain tanpa perlu copy-paste.
   - Menggunakan algoritma *differential typing* cerdas berbasis *Longest Common Prefix* untuk meminimalkan penekanan tombol backspace jika ada revisi kata dari Whisper.
@@ -61,16 +66,32 @@ live-speech-to-text/
 
 ---
 
-## Cara Menjalankan
+## Instalasi & Cara Menjalankan
 
-Cukup klik ganda (double-click) file:
+### 1. Instalasi Shortcut Instan (Disarankan)
+Cukup jalankan file:
 ```text
-run.bat
+Setup.bat
 ```
-Atau melalui terminal:
+Script ini akan otomatis membuat:
+- Shortcut di **Desktop**: `Live Speech to Text.lnk` dengan ikon mikrofon cyan.
+- Shortcut di **Start Menu**: Folder `ADR Programming > Live Speech to Text`.
+- Menjalankan aplikasi langsung tanpa menampilkan konsol CMD hitam (via `Live Speech to Text.vbs`).
+
+### 2. Menjalankan Manual
+- Klik ganda file `Live Speech to Text.vbs` (tanpa jendela konsol hitam CMD).
+- Atau klik ganda `run.bat` (dengan tampilan konsol untuk diagnosa).
+- Atau via terminal:
 ```powershell
 .\venv\Scripts\python.exe main.py
 ```
+
+### 3. Build Installer Setup (.exe)
+Jika ingin membuat file installer Inno Setup `.exe`:
+```text
+build_installer.bat
+```
+File installer setup mandiri akan dibuat di folder `Output\LiveSpeechToText_Setup.exe`.
 
 ---
 
@@ -80,7 +101,7 @@ Atau melalui terminal:
 2. Posisikan kursor Anda di tempat Anda ingin mengetik (misal: kolom chat WhatsApp atau dokumen Word).
 3. Mulai merekam dengan salah satu cara berikut:
    - Tekan tombol keyboard **`F8`** (kursor tetap aktif di aplikasi target).
-   - Atau klik tombol **`▶ Start`** pada Floating App.
+   - Atau klik **tombol mikrofon besar** di tengah Floating App.
 4. Tampilan aplikasi akan beralih ke mode **`Listening...`** dengan visualizer gelombang suara aktif.
 5. Mulailah berbicara. Kata-kata yang Anda ucapkan akan langsung terketik secara *real-time* tepat di posisi kursor Anda.
 6. Untuk berhenti, tekan tombol **`F8`** lagi atau klik tombol **`■ End`**.

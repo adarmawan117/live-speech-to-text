@@ -1,11 +1,13 @@
+import os
 import sounddevice as sd
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-    QComboBox, QPushButton, QRadioButton, QButtonGroup, QFrame
+    QComboBox, QPushButton, QRadioButton
 )
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont
 from src.core.config_manager import load_config, save_config
+
+ASSETS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets")).replace("\\", "/")
 
 class SettingsDialog(QDialog):
     """
@@ -30,81 +32,99 @@ class SettingsDialog(QDialog):
 
     def _init_ui(self):
         self.setWindowTitle("Pengaturan - Live Speech to Text")
-        self.setFixedSize(360, 420)
+        self.setFixedSize(400, 530)
         self.setWindowFlags(Qt.Dialog | Qt.WindowCloseButtonHint)
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #0d131f;
+
+        chevron_path = f"{ASSETS_DIR}/chevron_down.png"
+        radio_checked_path = f"{ASSETS_DIR}/radio_checked.png"
+        radio_unchecked_path = f"{ASSETS_DIR}/radio_unchecked.png"
+
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: #0c1322;
                 color: #ffffff;
                 font-family: 'Segoe UI', sans-serif;
-            }
-            QLabel {
-                color: #c7d2e3;
+            }}
+            QLabel {{
+                color: #94a3b8;
                 font-size: 12px;
-            }
-            QLabel#title {
+                font-weight: 500;
+            }}
+            QComboBox {{
+                background-color: #141e33;
                 color: #ffffff;
-                font-size: 15px;
-                font-weight: bold;
-            }
-            QComboBox {
-                background-color: #162035;
-                color: #ffffff;
-                border: 1px solid #2a3b5c;
-                border-radius: 6px;
-                padding: 6px 10px;
-                font-size: 12px;
-            }
-            QComboBox::drop-down {
+                border: 1px solid #253858;
+                border-radius: 8px;
+                padding-left: 12px;
+                padding-right: 32px;
+                font-size: 13px;
+            }}
+            QComboBox:hover {{
+                border-color: #3b5a8c;
+                background-color: #18253e;
+            }}
+            QComboBox:focus {{
+                border-color: #1b68ff;
+            }}
+            QComboBox::drop-down {{
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 34px;
                 border: none;
-                width: 20px;
-            }
-            QComboBox QAbstractItemView {
-                background-color: #162035;
+            }}
+            QComboBox::down-arrow {{
+                image: url("{chevron_path}");
+                width: 14px;
+                height: 14px;
+                margin-right: 10px;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: #141e33;
                 color: #ffffff;
                 selection-background-color: #1b68ff;
-                border: 1px solid #2a3b5c;
-            }
-            QRadioButton {
-                color: #c7d2e3;
-                font-size: 12px;
-                spacing: 6px;
-            }
-            QPushButton#btn_save {
-                background-color: #1b68ff;
-                color: #ffffff;
-                border: none;
+                selection-color: #ffffff;
+                border: 1px solid #253858;
                 border-radius: 6px;
-                padding: 8px 16px;
-                font-weight: bold;
-            }
-            QPushButton#btn_save:hover {
-                background-color: #2b78ff;
-            }
-            QPushButton#btn_cancel {
-                background-color: transparent;
-                color: #8fa0bc;
-                border: 1px solid #2a3b5c;
-                border-radius: 6px;
-                padding: 8px 16px;
-            }
-            QPushButton#btn_cancel:hover {
-                background-color: #162035;
+                padding: 4px;
+                outline: none;
+            }}
+            QComboBox QAbstractItemView::item {{
+                min-height: 34px;
+                padding: 4px 12px;
+            }}
+            QRadioButton {{
+                color: #cbd5e1;
+                font-size: 13px;
+                spacing: 10px;
+                min-height: 26px;
+            }}
+            QRadioButton:hover {{
                 color: #ffffff;
-            }
+            }}
+            QRadioButton::indicator {{
+                width: 18px;
+                height: 18px;
+            }}
+            QRadioButton::indicator:checked {{
+                image: url("{radio_checked_path}");
+            }}
+            QRadioButton::indicator:unchecked {{
+                image: url("{radio_unchecked_path}");
+            }}
         """)
 
         self.layout_root = QVBoxLayout(self)
-        self.layout_root.setContentsMargins(20, 20, 20, 20)
+        self.layout_root.setContentsMargins(24, 22, 24, 22)
         self.layout_root.setSpacing(14)
 
         lbl_header = QLabel("Pengaturan STT & Hotkey", self)
-        lbl_header.setObjectName("title")
+        lbl_header.setStyleSheet("color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 2px;")
         self.layout_root.addWidget(lbl_header)
 
         # 1. Hotkey Global
         lbl_hk = QLabel("Tombol Shortcut Global (Start / End):", self)
         self.combo_hotkey = QComboBox(self)
+        self.combo_hotkey.setFixedHeight(38)
         self.combo_hotkey.addItems(["F8", "F9", "F10", "F12", "Ctrl+Shift+Space", "Alt+V", "F4"])
         self.combo_hotkey.setCurrentText(self.config.get("hotkey", "F8"))
         self.layout_root.addWidget(lbl_hk)
@@ -113,6 +133,7 @@ class SettingsDialog(QDialog):
         # 2. Model Whisper
         lbl_mdl = QLabel("Model Whisper AI:", self)
         self.combo_model = QComboBox(self)
+        self.combo_model.setFixedHeight(38)
         self.combo_model.addItems(["small", "base", "medium", "tiny"])
         self.combo_model.setCurrentText(self.config.get("model_size", "small"))
         self.layout_root.addWidget(lbl_mdl)
@@ -121,6 +142,7 @@ class SettingsDialog(QDialog):
         # 3. Bahasa
         lbl_lang = QLabel("Bahasa Transkripsi:", self)
         self.combo_lang = QComboBox(self)
+        self.combo_lang.setFixedHeight(38)
         self.combo_lang.addItem("Indonesia (id)", "id")
         self.combo_lang.addItem("English (en)", "en")
         self.combo_lang.addItem("Otomatis (Auto-Detect)", None)
@@ -134,6 +156,7 @@ class SettingsDialog(QDialog):
         # 4. Mikrofon
         lbl_mic = QLabel("Perangkat Mikrofon:", self)
         self.combo_device = QComboBox(self)
+        self.combo_device.setFixedHeight(38)
         self._populate_audio_devices()
         self.layout_root.addWidget(lbl_mic)
         self.layout_root.addWidget(self.combo_device)
@@ -152,7 +175,8 @@ class SettingsDialog(QDialog):
             self.radio_streaming.setChecked(True)
 
         layout_radio = QVBoxLayout()
-        layout_radio.setSpacing(6)
+        layout_radio.setSpacing(8)
+        layout_radio.setContentsMargins(4, 2, 4, 4)
         layout_radio.addWidget(self.radio_streaming)
         layout_radio.addWidget(self.radio_sentence)
         self.layout_root.addLayout(layout_radio)
@@ -161,12 +185,53 @@ class SettingsDialog(QDialog):
 
         # Tombol Aksi
         layout_btn = QHBoxLayout()
-        layout_btn.setSpacing(10)
+        layout_btn.setSpacing(12)
 
         self.btn_cancel = QPushButton("Batal", self)
-        self.btn_cancel.setObjectName("btn_cancel")
+        self.btn_cancel.setFixedHeight(38)
+        self.btn_cancel.setCursor(Qt.PointingHandCursor)
+        self.btn_cancel.setStyleSheet("""
+            QPushButton {
+                background-color: #141e33;
+                color: #94a3b8;
+                border: 1px solid #253858;
+                border-radius: 8px;
+                font-size: 13px;
+                font-weight: 600;
+                padding: 0 20px;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #1e2c47;
+                color: #ffffff;
+                border-color: #3b5a8c;
+            }
+            QPushButton:pressed {
+                background-color: #111a2c;
+            }
+        """)
+
         self.btn_save = QPushButton("Simpan", self)
-        self.btn_save.setObjectName("btn_save")
+        self.btn_save.setFixedHeight(38)
+        self.btn_save.setCursor(Qt.PointingHandCursor)
+        self.btn_save.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1a62f5, stop:1 #2779ff);
+                color: #ffffff;
+                border: none;
+                border-radius: 8px;
+                font-size: 13px;
+                font-weight: bold;
+                padding: 0 24px;
+                min-width: 90px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #2570ff, stop:1 #3b88ff);
+            }
+            QPushButton:pressed {
+                background: #1450d0;
+            }
+        """)
 
         layout_btn.addStretch()
         layout_btn.addWidget(self.btn_cancel)

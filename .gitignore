@@ -9,9 +9,11 @@ __pycache__/
 *$py.class
 *.spec
 
-# PyInstaller / Build
+# PyInstaller / Build / Installer
 build/
 dist/
+Output/
+*.exe
 
 # OS / Editor
 .vscode/
