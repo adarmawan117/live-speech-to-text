@@ -43,3 +43,4 @@ class FocusManager:
             self.user32.SetForegroundWindow(self.last_target_hwnd)
         except Exception:
             pass
+

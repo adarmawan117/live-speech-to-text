@@ -54,3 +54,4 @@ class VirtualTypist:
     def reset(self):
         """Mereset state pengetikan."""
         self.last_interim = ""
+

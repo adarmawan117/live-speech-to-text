@@ -32,3 +32,4 @@ def save_config(config: dict) -> bool:
         return True
     except Exception:
         return False
+

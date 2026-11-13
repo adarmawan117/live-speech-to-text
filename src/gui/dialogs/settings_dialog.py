@@ -204,3 +204,4 @@ class SettingsDialog(QDialog):
 
         save_config(self.config)
         self.accept()
+

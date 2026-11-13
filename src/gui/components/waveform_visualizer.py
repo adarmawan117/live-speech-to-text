@@ -86,3 +86,4 @@ class WaveformVisualizer(QWidget):
             painter.drawRoundedRect(int(x), int(y), int(bar_width), int(h), 1.5, 1.5)
 
         painter.end()
+

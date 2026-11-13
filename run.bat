@@ -1,12 +1,7 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal
 title Live Speech to Text - ADR Programming
 cd /d "%~dp0"
-
-echo ======================================================
-echo          Live Speech to Text - ADR Programming
-echo ======================================================
-echo.
 
 if not exist "venv\Scripts\python.exe" (
     echo [ERROR] Virtual environment 'venv' tidak ditemukan!
@@ -17,9 +12,8 @@ if not exist "venv\Scripts\python.exe" (
 )
 
 "venv\Scripts\python.exe" main.py
-
-echo.
-echo ======================================================
-echo Aplikasi telah berhenti.
-echo ======================================================
-pause
+if errorlevel 1 (
+    echo.
+    echo [ERROR] Aplikasi terhenti karena terjadi kesalahan.
+    pause
+)

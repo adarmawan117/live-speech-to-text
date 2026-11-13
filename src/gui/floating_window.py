@@ -1,9 +1,9 @@
 import sys
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QStackedWidget, QGraphicsDropShadowEffect
+    QPushButton, QStackedWidget, QGraphicsDropShadowEffect, QApplication
 )
-from PyQt5.QtCore import Qt, QPoint
+from PyQt5.QtCore import Qt, QPoint, QSize
 from PyQt5.QtGui import QFont, QColor
 
 from src.core.config_manager import load_config
@@ -12,15 +12,17 @@ from src.core.virtual_typist import VirtualTypist
 from src.core.hotkey_manager import HotkeyManager
 from src.core.live_worker import LiveSTTWorker
 from src.gui.components.waveform_visualizer import WaveformVisualizer
+from src.gui.components.icons import get_svg_pixmap, get_svg_icon
 from src.gui.dialogs.settings_dialog import SettingsDialog
 from src.gui.dialogs.about_dialog import AboutDialog
 
 class FloatingSTTWindow(QWidget):
     """
     Floating App Window utama untuk Live Speech to Text.
+    - Menggunakan icon premium berbasis vektor SVG.
     - Menempel di atas (Always On Top) dan Frameless Draggable.
-    - Mengetik langsung ke kursor aktif di aplikasi mana pun (WhatsApp, Word, Browser, dll).
-    - Desain dual-state: 'Ready to Transcribe' (Idle) dan 'Listening...' (Recording).
+    - Mengetik langsung ke kursor aktif di aplikasi mana pun.
+    - Otomatis keluar tuntas dan menutup CMD saat jendela ditutup.
     """
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -38,6 +40,7 @@ class FloatingSTTWindow(QWidget):
         self.container = None
         self.layout_root = None
         self.layout_header = None
+        self.lbl_header_icon = None
         self.lbl_header_title = None
         self.btn_minimize = None
         self.btn_close = None
@@ -66,7 +69,7 @@ class FloatingSTTWindow(QWidget):
 
     def _init_window(self):
         """Konfigurasi properti jendela frameless & always-on-top."""
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.SubWindow)
+        self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setFixedSize(320, 310)
 
@@ -90,53 +93,49 @@ class FloatingSTTWindow(QWidget):
         layout_container.setContentsMargins(16, 12, 16, 16)
         layout_container.setSpacing(10)
 
-        # 1. Header Bar (Icon, Title, Minimize, Close)
+        # 1. Header Bar (Icon SVG, Title, Minimize SVG, Close SVG)
         self.layout_header = QHBoxLayout()
-        self.layout_header.setSpacing(6)
+        self.layout_header.setSpacing(8)
 
-        lbl_mic_icon = QLabel("🎙", self.container)
-        lbl_mic_icon.setStyleSheet("font-size: 14px; color: #00d2ff;")
+        self.lbl_header_icon = QLabel(self.container)
+        self.lbl_header_icon.setPixmap(get_svg_pixmap("mic", color="#00d2ff", size=16))
 
         self.lbl_header_title = QLabel("Live Speech to Text", self.container)
         self.lbl_header_title.setStyleSheet("font-size: 12px; font-weight: bold; color: #ffffff;")
 
-        self.btn_minimize = QPushButton("—", self.container)
-        self.btn_minimize.setFixedSize(24, 24)
+        self.btn_minimize = QPushButton(self.container)
+        self.btn_minimize.setIcon(get_svg_icon("minimize", color="#8fa0bc", size=14))
+        self.btn_minimize.setIconSize(QSize(14, 14))
+        self.btn_minimize.setFixedSize(26, 26)
         self.btn_minimize.setCursor(Qt.PointingHandCursor)
         self.btn_minimize.setStyleSheet("""
             QPushButton {
                 background: transparent;
-                color: #8fa0bc;
                 border: none;
-                font-size: 14px;
-                font-weight: bold;
+                border-radius: 4px;
             }
             QPushButton:hover {
-                color: #ffffff;
                 background: rgba(255, 255, 255, 0.1);
-                border-radius: 4px;
             }
         """)
 
-        self.btn_close = QPushButton("✕", self.container)
-        self.btn_close.setFixedSize(24, 24)
+        self.btn_close = QPushButton(self.container)
+        self.btn_close.setIcon(get_svg_icon("close", color="#8fa0bc", size=13))
+        self.btn_close.setIconSize(QSize(13, 13))
+        self.btn_close.setFixedSize(26, 26)
         self.btn_close.setCursor(Qt.PointingHandCursor)
         self.btn_close.setStyleSheet("""
             QPushButton {
                 background: transparent;
-                color: #8fa0bc;
                 border: none;
-                font-size: 12px;
-                font-weight: bold;
+                border-radius: 4px;
             }
             QPushButton:hover {
-                color: #ffffff;
                 background: #e63946;
-                border-radius: 4px;
             }
         """)
 
-        self.layout_header.addWidget(lbl_mic_icon)
+        self.layout_header.addWidget(self.lbl_header_icon)
         self.layout_header.addWidget(self.lbl_header_title)
         self.layout_header.addStretch()
         self.layout_header.addWidget(self.btn_minimize)
@@ -158,25 +157,23 @@ class FloatingSTTWindow(QWidget):
 
         # Hubungkan tombol window
         self.btn_minimize.clicked.connect(self.showMinimized)
-        self.btn_close.clicked.connect(self.close)
+        self.btn_close.clicked.connect(self.close_application)
 
     def _build_idle_page(self):
-        """Halaman Idle: Badge Mic besar, Teks Ready, Tombol Start, Tombol Setting & Info."""
+        """Halaman Idle: Badge Mic SVG besar, Teks Ready, Tombol Start SVG, Tombol Setting & Info SVG."""
         self.page_idle = QWidget()
         layout = QVBoxLayout(self.page_idle)
         layout.setContentsMargins(0, 8, 0, 0)
         layout.setSpacing(10)
 
-        # Circular Badge Microphone
+        # Circular Badge Microphone dengan SVG Premium
         self.lbl_mic_badge = QLabel(self.page_idle)
         self.lbl_mic_badge.setFixedSize(76, 76)
         self.lbl_mic_badge.setAlignment(Qt.AlignCenter)
-        self.lbl_mic_badge.setText("🎙")
+        self.lbl_mic_badge.setPixmap(get_svg_pixmap("mic_badge", color="#ffffff", size=38))
         self.lbl_mic_badge.setStyleSheet("""
             QLabel {
                 background-color: #101c33;
-                color: #ffffff;
-                font-size: 32px;
                 border: 2px solid #1e75ff;
                 border-radius: 38px;
             }
@@ -201,8 +198,10 @@ class FloatingSTTWindow(QWidget):
         layout.addWidget(self.lbl_idle_title)
         layout.addWidget(self.lbl_idle_subtitle)
 
-        # Tombol Start
-        self.btn_start = QPushButton("  ▶  Start", self.page_idle)
+        # Tombol Start dengan Icon Play SVG
+        self.btn_start = QPushButton("Start", self.page_idle)
+        self.btn_start.setIcon(get_svg_icon("play", color="#ffffff", size=16))
+        self.btn_start.setIconSize(QSize(16, 16))
         self.btn_start.setFixedHeight(44)
         self.btn_start.setCursor(Qt.PointingHandCursor)
         self.btn_start.setStyleSheet("""
@@ -213,6 +212,7 @@ class FloatingSTTWindow(QWidget):
                 border-radius: 22px;
                 font-size: 14px;
                 font-weight: bold;
+                padding-left: 6px;
             }
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #2570ff, stop:1 #3b88ff);
@@ -224,38 +224,40 @@ class FloatingSTTWindow(QWidget):
         self.btn_start.clicked.connect(self.start_recording)
         layout.addWidget(self.btn_start)
 
-        # Baris Bawah (Gear & Info)
+        # Baris Bawah (Gear SVG & Info SVG)
         layout_footer = QHBoxLayout()
         layout_footer.setContentsMargins(4, 4, 4, 0)
 
-        self.btn_settings = QPushButton("⚙", self.page_idle)
-        self.btn_settings.setFixedSize(26, 26)
+        self.btn_settings = QPushButton(self.page_idle)
+        self.btn_settings.setIcon(get_svg_icon("gear", color="#8fa0bc", size=17))
+        self.btn_settings.setIconSize(QSize(17, 17))
+        self.btn_settings.setFixedSize(28, 28)
         self.btn_settings.setCursor(Qt.PointingHandCursor)
         self.btn_settings.setStyleSheet("""
             QPushButton {
                 background: transparent;
-                color: #8fa0bc;
                 border: none;
-                font-size: 16px;
+                border-radius: 4px;
             }
             QPushButton:hover {
-                color: #ffffff;
+                background: rgba(255, 255, 255, 0.08);
             }
         """)
         self.btn_settings.clicked.connect(self.open_settings)
 
-        self.btn_info = QPushButton("ⓘ", self.page_idle)
-        self.btn_info.setFixedSize(26, 26)
+        self.btn_info = QPushButton(self.page_idle)
+        self.btn_info.setIcon(get_svg_icon("info", color="#8fa0bc", size=17))
+        self.btn_info.setIconSize(QSize(17, 17))
+        self.btn_info.setFixedSize(28, 28)
         self.btn_info.setCursor(Qt.PointingHandCursor)
         self.btn_info.setStyleSheet("""
             QPushButton {
                 background: transparent;
-                color: #8fa0bc;
                 border: none;
-                font-size: 16px;
+                border-radius: 4px;
             }
             QPushButton:hover {
-                color: #ffffff;
+                background: rgba(255, 255, 255, 0.08);
             }
         """)
         self.btn_info.clicked.connect(self.open_about)
@@ -266,7 +268,7 @@ class FloatingSTTWindow(QWidget):
         layout.addLayout(layout_footer)
 
     def _build_recording_page(self):
-        """Halaman Recording: Waveform Visualizer cyan, Listening text, Tombol End merah."""
+        """Halaman Recording: Waveform Visualizer cyan, Listening text, Tombol End SVG merah."""
         self.page_recording = QWidget()
         layout = QVBoxLayout(self.page_recording)
         layout.setContentsMargins(0, 10, 0, 10)
@@ -288,8 +290,10 @@ class FloatingSTTWindow(QWidget):
         layout.addWidget(self.lbl_rec_title)
         layout.addWidget(self.lbl_rec_subtitle)
 
-        # Tombol End
-        self.btn_stop = QPushButton("  ■  End", self.page_recording)
+        # Tombol End dengan Icon Stop SVG
+        self.btn_stop = QPushButton("End", self.page_recording)
+        self.btn_stop.setIcon(get_svg_icon("stop", color="#ffffff", size=15))
+        self.btn_stop.setIconSize(QSize(15, 15))
         self.btn_stop.setFixedHeight(44)
         self.btn_stop.setCursor(Qt.PointingHandCursor)
         self.btn_stop.setStyleSheet("""
@@ -300,6 +304,7 @@ class FloatingSTTWindow(QWidget):
                 border-radius: 22px;
                 font-size: 14px;
                 font-weight: bold;
+                padding-left: 6px;
             }
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #f04855, stop:1 #ff5e6c);
@@ -436,10 +441,16 @@ class FloatingSTTWindow(QWidget):
         # Terapkan WS_EX_NOACTIVATE agar klik tombol tidak mencuri fokus kursor
         self.focus_manager.apply_no_activate(self)
 
+    def close_application(self):
+        """Keluar tuntas dari aplikasi."""
+        self.close()
+
     def closeEvent(self, event):
+        """Pembersihan bersih dan terminate event loop Qt saat jendela ditutup."""
         if self.worker is not None:
             self.worker.stop()
             self.worker = None
         if self.hotkey_manager is not None:
             self.hotkey_manager.unregister()
         event.accept()
+        QApplication.quit()

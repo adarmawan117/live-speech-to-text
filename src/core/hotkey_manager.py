@@ -25,13 +25,12 @@ class HotkeyManager(QObject):
             print(f"Gagal mendaftarkan hotkey '{hotkey}': {e}", flush=True)
 
     def unregister(self):
-        """Membatalkan pendaftaran hotkey aktif."""
-        if self.is_registered and self.current_hotkey:
-            try:
-                keyboard.remove_hotkey(self.current_hotkey)
-            except Exception:
-                pass
-            self.is_registered = False
+        """Membatalkan pendaftaran hotkey dan melepas hook keyboard sistem."""
+        try:
+            keyboard.unhook_all()
+        except Exception:
+            pass
+        self.is_registered = False
 
     def _on_hotkey(self):
         """Callback saat hotkey ditekan di Windows."""

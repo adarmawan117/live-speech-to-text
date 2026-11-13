@@ -61,3 +61,4 @@ class AboutDialog(QDialog):
         btn_ok = QPushButton("Tutup", self)
         btn_ok.clicked.connect(self.accept)
         layout.addWidget(btn_ok, alignment=Qt.AlignCenter)
+
