@@ -10,8 +10,8 @@ from src.core.live_worker import LiveSTTWorker
 
 class MainWindow(QMainWindow):
     """
-    Jendela Utama Live Speech to Text.
-    Mengikuti panduan arsitektur PyQt5:
+    Jendela Utama Live Speech to Text dengan fitur Streaming Kata demi Kata (Interim Preview).
+    Mengikuti standar PyQt5:
     - Inisialisasi atribut eksplisit di __init__
     - Penamaan widget semantik (btn_*, txt_*, lbl_*, dll.)
     - Tanpa setObjectName berlebih dan tanpa hasattr/getattr defensif
@@ -21,6 +21,9 @@ class MainWindow(QMainWindow):
         
         # Inisialisasi eksplisit seluruh atribut
         self.worker = None
+        self.committed_text = ""
+        self.current_interim = ""
+
         self.layout_root = None
         self.layout_controls = None
         self.layout_actions = None
@@ -57,8 +60,8 @@ class MainWindow(QMainWindow):
         self.layout_root.setContentsMargins(15, 15, 15, 15)
         self.layout_root.setSpacing(10)
 
-        # Baris Judul & Status
-        self.lbl_title = QLabel("Live Speech to Text", self)
+        # Baris Judul
+        self.lbl_title = QLabel("Live Speech to Text (Real-Time Voice Typing)", self)
         font_title = QFont()
         font_title.setPointSize(14)
         font_title.setBold(True)
@@ -71,8 +74,9 @@ class MainWindow(QMainWindow):
 
         lbl_model_tag = QLabel("Model:", self)
         self.combo_model = QComboBox(self)
-        self.combo_model.addItems(["medium", "small", "base", "tiny"])
-        self.combo_model.setCurrentText("medium")  # Prioritas hasil bagus
+        # Default: 'small' untuk respons real-time instan dan akurasi tinggi
+        self.combo_model.addItems(["small", "base", "medium", "tiny"])
+        self.combo_model.setCurrentText("small")
 
         lbl_lang_tag = QLabel("Bahasa:", self)
         self.combo_language = QComboBox(self)
@@ -111,7 +115,7 @@ class MainWindow(QMainWindow):
         self.layout_root.addLayout(self.layout_controls)
 
         # Level Audio & Status Label
-        self.lbl_status = QLabel("Status: Siap (Klik 'Mulai Mendengarkan' untuk mulai bicara)", self)
+        self.lbl_status = QLabel("Status: Siap (Klik 'Mulai Mendengarkan' lalu langsung bicara)", self)
         self.layout_root.addWidget(self.lbl_status)
 
         self.progress_audio = QProgressBar(self)
@@ -126,7 +130,7 @@ class MainWindow(QMainWindow):
         font_text = QFont()
         font_text.setPointSize(11)
         self.txt_transcription.setFont(font_text)
-        self.txt_transcription.setPlaceholderText("Hasil transkripsi suara Anda akan langsung muncul di sini secara berurutan...")
+        self.txt_transcription.setPlaceholderText("Bicaralah ke mikrofon, kata demi kata akan langsung muncul di sini secara real-time seperti di HP...")
         self.layout_root.addWidget(self.txt_transcription, stretch=1)
 
         # Tombol Aksi Tambahan (Salin & Hapus)
@@ -164,7 +168,7 @@ class MainWindow(QMainWindow):
         self.lbl_status.setText(f"Status: Model '{model_name}' dipilih. Klik 'Mulai Mendengarkan' untuk mulai.")
 
     def on_start_clicked(self):
-        """Memulai sesi perekaman & live STT."""
+        """Memulai sesi perekaman & live STT streaming."""
         if self.worker is not None and self.worker.isRunning():
             return
 
@@ -179,7 +183,8 @@ class MainWindow(QMainWindow):
 
         self.worker = LiveSTTWorker(model_size=model_name, language=selected_lang, parent=self)
         self.worker.status_changed.connect(self.on_status_changed)
-        self.worker.text_segment_ready.connect(self.on_text_segment_ready)
+        self.worker.interim_text_ready.connect(self.on_interim_text_ready)
+        self.worker.final_text_ready.connect(self.on_final_text_ready)
         self.worker.audio_level.connect(self.on_audio_level)
         self.worker.engine_ready.connect(self.on_engine_ready)
         self.worker.start()
@@ -187,7 +192,7 @@ class MainWindow(QMainWindow):
     def on_stop_clicked(self):
         """Menghentikan sesi perekaman & live STT."""
         if self.worker is not None:
-            self.lbl_status.setText("Status: Menghentikan & menyelesaikan segmen terakhir...")
+            self.lbl_status.setText("Status: Menyelesaikan kalimat terakhir...")
             self.worker.stop()
             self.worker = None
 
@@ -196,6 +201,8 @@ class MainWindow(QMainWindow):
         self.combo_model.setEnabled(True)
         self.combo_language.setEnabled(True)
         self.progress_audio.setValue(0)
+        self.current_interim = ""
+        self._render_text()
         self.lbl_status.setText("Status: Selesai")
 
         # Otomatis salin ke clipboard jika dicentang
@@ -215,15 +222,40 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-    def on_text_segment_ready(self, text: str):
-        """Menambahkan teks hasil transkripsi ke text area secara rapi."""
-        current_text = self.txt_transcription.toPlainText().strip()
-        if current_text:
-            new_text = current_text + " " + text
-        else:
-            new_text = text
+    def on_interim_text_ready(self, interim_text: str):
+        """
+        Menerima potongan kata live yang sedang diucapkan secara real-time
+        dan langsung memperbarui tampilan di layar.
+        """
+        self.current_interim = interim_text.strip()
+        self._render_text()
 
-        self.txt_transcription.setPlainText(new_text)
+    def on_final_text_ready(self, final_text: str):
+        """
+        Menerima kalimat final saat ada jeda bicara dan menguncinya ke committed text.
+        """
+        clean_text = final_text.strip()
+        if clean_text:
+            if self.committed_text:
+                self.committed_text += " " + clean_text
+            else:
+                self.committed_text = clean_text
+
+        self.current_interim = ""
+        self._render_text()
+
+    def _render_text(self):
+        """Merender gabungan teks yang sudah terkunci dan kata live yang sedang diucapkan."""
+        parts = []
+        if self.committed_text:
+            parts.append(self.committed_text)
+        if self.current_interim:
+            parts.append(self.current_interim)
+
+        full_text = " ".join(parts).strip()
+        self.txt_transcription.setPlainText(full_text)
+
+        # Geser kursor selalu ke paling akhir
         cursor = self.txt_transcription.textCursor()
         cursor.movePosition(QTextCursor.End)
         self.txt_transcription.setTextCursor(cursor)
@@ -237,7 +269,9 @@ class MainWindow(QMainWindow):
             self.lbl_status.setText("Status: Teks berhasil disalin ke clipboard! Siap dipaste ke pesan.")
 
     def on_clear_clicked(self):
-        """Bersihkan text area."""
+        """Membersihkan text area dan memori buffer teks."""
+        self.committed_text = ""
+        self.current_interim = ""
         self.txt_transcription.clear()
         self.lbl_status.setText("Status: Teks dibersihkan.")
 

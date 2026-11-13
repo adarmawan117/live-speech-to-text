@@ -6,33 +6,34 @@ from src.core.stt_engine import get_stt_engine
 
 class LiveSTTWorker(QThread):
     """
-    Worker background QThread yang menangkap audio real-time dan melakukan
-    deteksi jeda bicara (voice activity detection), lalu mentranskripsikannya
-    menggunakan STTEngine tanpa memblokir GUI.
+    Worker background QThread streaming audio real-time:
+    - Menghasilkan live interim transcription per-kata saat pengguna sedang bicara.
+    - Mengunci kalimat (final commit) ketika mendeteksi jeda napas/berhenti bicara.
     """
     status_changed = pyqtSignal(str)
-    text_segment_ready = pyqtSignal(str)
+    interim_text_ready = pyqtSignal(str)   # Kata-kata live yang sedang diucapkan
+    final_text_ready = pyqtSignal(str)     # Kalimat yang sudah selesai/dikunci
     audio_level = pyqtSignal(float)
     engine_ready = pyqtSignal(str)
 
-    def __init__(self, model_size: str = "medium", language: str = "id", parent=None):
+    def __init__(self, model_size: str = "small", language: str = "id", parent=None):
         super().__init__(parent)
         self.model_size = model_size
         self.language = language
         self.audio_capture = None
         self.engine = None
         self.is_running = False
-        self.silence_threshold = 0.015  # Ambang batas energi suara (RMS)
-        self.silence_limit_sec = 0.8     # Jeda hening sebelum transkripsi dipicu
-        self.max_phrase_sec = 15.0       # Batas durasi frase sebelum dipaksa transkripsi
+        self.silence_threshold = 0.015   # Ambang batas energi suara (RMS)
+        self.silence_limit_sec = 0.75     # Jeda hening sebelum kalimat dikunci
+        self.interim_interval_sec = 0.35  # Interval pembaruan preview per-kata (~350ms)
+        self.max_phrase_sec = 12.0        # Batas durasi frase maksimal sebelum dipotong
 
     def run(self):
         self.is_running = True
         try:
             self.status_changed.emit(f"Menyiapkan model Whisper '{self.model_size}'...")
             self.engine = get_stt_engine(model_size=self.model_size, language=self.language)
-            
-            # Jika user sudah menekan Stop saat model sedang disiapkan
+
             if not self.is_running:
                 return
 
@@ -46,11 +47,13 @@ class LiveSTTWorker(QThread):
             silence_start_time = None
             is_speaking = False
             phrase_start_time = None
+            last_interim_time = 0.0
+            last_interim_text = ""
 
             sample_rate = 16000
 
             while self.is_running:
-                chunk = self.audio_capture.get_chunk(timeout=0.05)
+                chunk = self.audio_capture.get_chunk(timeout=0.04)
                 if chunk is None:
                     continue
 
@@ -61,7 +64,6 @@ class LiveSTTWorker(QThread):
                     rms = 0.0
 
                 self.audio_level.emit(min(rms * 10, 1.0))
-
                 current_time = time.time()
 
                 if rms > self.silence_threshold:
@@ -70,28 +72,45 @@ class LiveSTTWorker(QThread):
                         phrase_start_time = current_time
                     silence_start_time = None
                     speech_buffer.append(chunk)
+
+                    # Pembaruan streaming per-kata (Interim Preview)
+                    if (current_time - last_interim_time) >= self.interim_interval_sec:
+                        last_interim_time = current_time
+                        total_audio = np.concatenate(speech_buffer)
+                        # Hanya proses jika durasi suara sudah minimal ~0.25 detik
+                        if len(total_audio) / sample_rate >= 0.25:
+                            interim = self.engine.transcribe_interim(total_audio)
+                            if interim:
+                                last_interim_text = interim
+                                self.interim_text_ready.emit(interim)
+
                 else:
                     if is_speaking:
                         speech_buffer.append(chunk)
                         if silence_start_time is None:
                             silence_start_time = current_time
                         elif (current_time - silence_start_time) >= self.silence_limit_sec:
-                            # Jeda bicara terdeteksi! Lakukan transkripsi
-                            self._process_speech_buffer(speech_buffer, sample_rate)
+                            # Pengguna berhenti bicara sejenak -> Kunci kalimat (Final Commit)
+                            self._commit_phrase(speech_buffer, sample_rate, last_interim_text)
                             speech_buffer = []
                             is_speaking = False
                             silence_start_time = None
+                            last_interim_text = ""
+                            self.interim_text_ready.emit("")
 
-                # Jika pengguna bicara tanpa henti melebihi batas waktu, potong sebagian
+                # Jika pengguna bicara tanpa henti melebihi durasi batas, kunci segmen
                 if is_speaking and phrase_start_time and (current_time - phrase_start_time) >= self.max_phrase_sec:
-                    self._process_speech_buffer(speech_buffer, sample_rate)
+                    self._commit_phrase(speech_buffer, sample_rate, last_interim_text)
                     speech_buffer = []
                     phrase_start_time = current_time
                     silence_start_time = None
+                    last_interim_text = ""
+                    self.interim_text_ready.emit("")
 
-            # Jika dihentikan dan masih ada sisa buffer bicara
-            if speech_buffer and self.is_running:
-                self._process_speech_buffer(speech_buffer, sample_rate)
+            # Jika worker dihentikan dan masih ada sisa buffer bicara
+            if speech_buffer:
+                self._commit_phrase(speech_buffer, sample_rate, last_interim_text)
+                self.interim_text_ready.emit("")
 
         except Exception as e:
             print(f"Error pada thread LiveSTTWorker: {e}", flush=True)
@@ -102,32 +121,31 @@ class LiveSTTWorker(QThread):
                 self.audio_capture = None
             self.status_changed.emit("Siap")
 
-    def _process_speech_buffer(self, buffer_chunks, sample_rate):
+    def _commit_phrase(self, buffer_chunks, sample_rate, fallback_text):
+        """Memproses transkripsi final untuk mengunci kalimat."""
         if not buffer_chunks or self.engine is None:
             return
 
         total_audio = np.concatenate(buffer_chunks)
         duration = len(total_audio) / sample_rate
 
-        # Abaikan noise klik / batuk singkat di bawah 0.4 detik
-        if duration < 0.4:
+        if duration < 0.35:
             return
 
-        self.status_changed.emit("Mentranskripsikan...")
         try:
-            text = self.engine.transcribe_audio(total_audio)
-            if text:
-                self.text_segment_ready.emit(text)
+            final_text = self.engine.transcribe_audio(total_audio)
+            # Jika transkripsi final kosong (misal terfilter VAD), gunakan teks interim terakhir
+            commit_text = final_text if final_text else fallback_text
+            if commit_text:
+                self.final_text_ready.emit(commit_text)
         except Exception as e:
-            print(f"Error transkripsi: {e}", flush=True)
-        finally:
-            if self.is_running:
-                self.status_changed.emit("Mendengarkan suara...")
+            print(f"Error saat commit transkripsi: {e}", flush=True)
+            if fallback_text:
+                self.final_text_ready.emit(fallback_text)
 
     def stop(self):
         """Menghentikan worker secara aman dan non-blocking."""
         self.is_running = False
-        # Gunakan timeout wait 1500ms agar GUI tidak pernah freeze
         if not self.wait(1500):
             try:
                 self.terminate()
