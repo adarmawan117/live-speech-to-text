@@ -7,14 +7,13 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QTextCursor
 from src.core.live_worker import LiveSTTWorker
+from src.core.text_cleaner import clean_stt_punctuation
 
 class MainWindow(QMainWindow):
     """
-    Jendela Utama Live Speech to Text dengan fitur Streaming Kata demi Kata (Interim Preview).
-    Mengikuti standar PyQt5:
-    - Inisialisasi atribut eksplisit di __init__
-    - Penamaan widget semantik (btn_*, txt_*, lbl_*, dll.)
-    - Tanpa setObjectName berlebih dan tanpa hasattr/getattr defensif
+    Jendela Utama Live Speech to Text dengan fitur Streaming Kata demi Kata.
+    - Menghilangkan tanda baca otomatis HANYA dari hasil live transcribe.
+    - Menjaga dan TIDAK MENGHAPUS tanda baca atau teks yang diketik secara manual oleh pengguna.
     """
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -23,6 +22,7 @@ class MainWindow(QMainWindow):
         self.worker = None
         self.committed_text = ""
         self.current_interim = ""
+        self._is_updating_ui = False
 
         self.layout_root = None
         self.layout_controls = None
@@ -74,7 +74,6 @@ class MainWindow(QMainWindow):
 
         lbl_model_tag = QLabel("Model:", self)
         self.combo_model = QComboBox(self)
-        # Default: 'small' untuk respons real-time instan dan akurasi tinggi
         self.combo_model.addItems(["small", "base", "medium", "tiny"])
         self.combo_model.setCurrentText("small")
 
@@ -162,10 +161,22 @@ class MainWindow(QMainWindow):
         self.btn_copy.clicked.connect(self.on_copy_clicked)
         self.btn_clear.clicked.connect(self.on_clear_clicked)
         self.combo_model.currentTextChanged.connect(self.on_model_changed)
+        self.txt_transcription.textChanged.connect(self.on_text_changed)
 
     def on_model_changed(self, model_name: str):
         """Memberi informasi status ketika pilihan model diubah."""
         self.lbl_status.setText(f"Status: Model '{model_name}' dipilih. Klik 'Mulai Mendengarkan' untuk mulai.")
+
+    def on_text_changed(self):
+        """
+        Jika pengguna mengetik manual atau mengedit teks (termasuk menambahkan tanda baca sendiri),
+        simpan perubahan tersebut ke committed_text agar tidak hilang atau terhapus.
+        """
+        if self._is_updating_ui:
+            return
+        # Sinkronkan hanya ketika tidak sedang ada interim aktif
+        if not self.current_interim:
+            self.committed_text = self.txt_transcription.toPlainText().strip()
 
     def on_start_clicked(self):
         """Memulai sesi perekaman & live STT streaming."""
@@ -174,6 +185,10 @@ class MainWindow(QMainWindow):
 
         model_name = self.combo_model.currentText()
         selected_lang = self.combo_language.currentData()
+
+        # Sinkronkan teks yang ada saat ini di text area sebagai base
+        self.committed_text = self.txt_transcription.toPlainText().strip()
+        self.current_interim = ""
 
         self.btn_start.setEnabled(False)
         self.btn_stop.setEnabled(True)
@@ -224,28 +239,34 @@ class MainWindow(QMainWindow):
 
     def on_interim_text_ready(self, interim_text: str):
         """
-        Menerima potongan kata live yang sedang diucapkan secara real-time
-        dan langsung memperbarui tampilan di layar.
+        Menerima potongan kata live yang sedang diucapkan secara real-time.
+        Tanda baca otomatis dari STT langsung dihilangkan,
+        tetapi teks dan tanda baca manual yang sudah ada tetap utuh.
         """
-        self.current_interim = interim_text.strip()
+        # Jika baru mulai berbicara kembali, sinkronkan base dari text area
+        if not self.current_interim:
+            self.committed_text = self.txt_transcription.toPlainText().strip()
+
+        self.current_interim = clean_stt_punctuation(interim_text)
         self._render_text()
 
     def on_final_text_ready(self, final_text: str):
         """
         Menerima kalimat final saat ada jeda bicara dan menguncinya ke committed text.
+        Tanda baca otomatis dari STT dihilangkan.
         """
-        clean_text = final_text.strip()
-        if clean_text:
+        cleaned_final = clean_stt_punctuation(final_text)
+        if cleaned_final:
             if self.committed_text:
-                self.committed_text += " " + clean_text
+                self.committed_text += " " + cleaned_final
             else:
-                self.committed_text = clean_text
+                self.committed_text = cleaned_final
 
         self.current_interim = ""
         self._render_text()
 
     def _render_text(self):
-        """Merender gabungan teks yang sudah terkunci dan kata live yang sedang diucapkan."""
+        """Merender gabungan teks committed dan kata live interim ke text area."""
         parts = []
         if self.committed_text:
             parts.append(self.committed_text)
@@ -253,9 +274,12 @@ class MainWindow(QMainWindow):
             parts.append(self.current_interim)
 
         full_text = " ".join(parts).strip()
+        
+        self._is_updating_ui = True
         self.txt_transcription.setPlainText(full_text)
+        self._is_updating_ui = False
 
-        # Geser kursor selalu ke paling akhir
+        # Geser kursor ke paling akhir
         cursor = self.txt_transcription.textCursor()
         cursor.movePosition(QTextCursor.End)
         self.txt_transcription.setTextCursor(cursor)
@@ -272,7 +296,9 @@ class MainWindow(QMainWindow):
         """Membersihkan text area dan memori buffer teks."""
         self.committed_text = ""
         self.current_interim = ""
+        self._is_updating_ui = True
         self.txt_transcription.clear()
+        self._is_updating_ui = False
         self.lbl_status.setText("Status: Teks dibersihkan.")
 
     def closeEvent(self, event):

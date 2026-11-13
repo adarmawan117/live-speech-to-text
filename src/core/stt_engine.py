@@ -9,6 +9,7 @@ setup_cuda_environment()
 
 import ctranslate2
 from faster_whisper import WhisperModel
+from src.core.text_cleaner import clean_stt_punctuation
 
 _ENGINE_CACHE = {}
 
@@ -22,7 +23,7 @@ def get_stt_engine(model_size: str = "small", language: str = "id") -> "STTEngin
 class STTEngine:
     """
     Engine Speech to Text menggunakan faster-whisper dengan akselerasi GPU (CUDA)
-    dan fallback otomatis ke CPU. Mendukung mode interim (real-time per-kata) dan mode final.
+    dan fallback otomatis ke CPU. Menghasilkan teks murni tanpa tanda baca otomatis.
     """
     def __init__(self, model_size: str = "small", device: str = "auto", language: str = "id"):
         setup_cuda_environment()
@@ -52,8 +53,8 @@ class STTEngine:
 
     def transcribe_interim(self, audio_data: np.ndarray) -> str:
         """
-        Transkripsi super cepat (greedy decoding beam_size=1) untuk streaming live kata demi kata.
-        Latensi ~40ms - 100ms di RTX 3050.
+        Transkripsi super cepat (beam_size=1) untuk streaming kata demi kata.
+        Tanda baca otomatis langsung dihilangkan.
         """
         if self.model is None or len(audio_data) == 0:
             return ""
@@ -73,14 +74,15 @@ class STTEngine:
         try:
             segments, _ = self.model.transcribe(audio_data, **transcribe_kwargs)
             texts = [s.text.strip() for s in segments if s.no_speech_prob < 0.6 and s.text.strip()]
-            return " ".join(texts)
+            raw_text = " ".join(texts)
+            return clean_stt_punctuation(raw_text)
         except Exception:
             return ""
 
     def transcribe_audio(self, audio_data: np.ndarray) -> str:
         """
-        Transkripsi final saat jeda bicara (beam_size=3 dengan VAD filter)
-        untuk mengunci kalimat secara akurat dan rapi.
+        Transkripsi final saat jeda bicara (beam_size=3 dengan VAD filter).
+        Tanda baca otomatis langsung dihilangkan.
         """
         if self.model is None or len(audio_data) == 0:
             return ""
@@ -100,6 +102,7 @@ class STTEngine:
         try:
             segments, _ = self.model.transcribe(audio_data, **transcribe_kwargs)
             texts = [s.text.strip() for s in segments if s.text.strip()]
-            return " ".join(texts)
+            raw_text = " ".join(texts)
+            return clean_stt_punctuation(raw_text)
         except Exception:
             return ""
