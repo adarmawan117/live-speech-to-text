@@ -11,20 +11,27 @@ echo.
 
 set "ISCC_PATH="
 
-:: Cari lokasi ISCC.exe
+:: 1. Cari lokasi ISCC.exe standar
 if exist "%LocalAppData%\Programs\Inno Setup 6\ISCC.exe" (
     set "ISCC_PATH=%LocalAppData%\Programs\Inno Setup 6\ISCC.exe"
-) else if exist "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" (
-    set "ISCC_PATH=C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-) else if exist "C:\Program Files\Inno Setup 6\ISCC.exe" (
-    set "ISCC_PATH=C:\Program Files\Inno Setup 6\ISCC.exe"
+) else if exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" (
+    set "ISCC_PATH=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
+) else if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" (
+    set "ISCC_PATH=%ProgramFiles%\Inno Setup 6\ISCC.exe"
 ) else (
     for /f "tokens=*" %%i in ('where iscc 2^>nul') do set "ISCC_PATH=%%i"
 )
 
+:: 2. Fallback ke compiler bawaan Antigravity IDE jika instalasi standar tidak ditemukan
 if not defined ISCC_PATH (
-    echo [ERROR] Inno Setup Compiler (ISCC.exe) tidak ditemukan!
-    echo Silakan install Inno Setup 6 terlebih dahulu.
+    if exist "%LocalAppData%\Programs\Antigravity IDE\resources\app\node_modules\innosetup\bin\ISCC.exe" (
+        set "ISCC_PATH=%LocalAppData%\Programs\Antigravity IDE\resources\app\node_modules\innosetup\bin\ISCC.exe"
+    )
+)
+
+if not defined ISCC_PATH (
+    echo [ERROR] Inno Setup Compiler [ISCC.exe] tidak ditemukan!
+    echo Silakan unduh dan install Inno Setup 6 dari: https://jrsoftware.org/isdl.php
     echo.
     pause
     exit /b 1
@@ -49,4 +56,3 @@ echo Lokasi output: Output\LiveSpeechToText_Setup.exe
 echo =======================================================
 echo.
 pause
-

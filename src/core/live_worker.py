@@ -15,12 +15,13 @@ class LiveSTTWorker(QThread):
     final_text_ready = pyqtSignal(str)     # Kalimat yang sudah selesai/dikunci
     audio_level = pyqtSignal(float)
     engine_ready = pyqtSignal(str)
-    auto_timeout = pyqtSignal()            # Dipicu jika 60 detik tidak ada input suara
+    auto_timeout = pyqtSignal()            # Dipicu jika tidak ada input suara melebihi batas timeout
 
-    def __init__(self, model_size: str = "small", language: str = "id", timeout_sec: float = 60.0, parent=None):
+    def __init__(self, model_size: str = "small", language: str = "id", auto_stop_enabled: bool = True, timeout_sec: float = 60.0, parent=None):
         super().__init__(parent)
         self.model_size = model_size
         self.language = language
+        self.auto_stop_enabled = bool(auto_stop_enabled)
         self.no_speech_timeout_sec = float(timeout_sec)
         self.audio_capture = None
         self.engine = None
@@ -102,10 +103,10 @@ class LiveSTTWorker(QThread):
                             last_interim_text = ""
                             self.interim_text_ready.emit("")
 
-                    # Cek batas waktu hening tanpa suara (Auto-Timeout 60 detik)
-                    elif (current_time - last_speech_time) >= self.no_speech_timeout_sec:
+                    # Cek batas waktu hening tanpa suara jika fitur Auto-Stop aktif
+                    elif self.auto_stop_enabled and (current_time - last_speech_time) >= self.no_speech_timeout_sec:
                         print(f"[LiveSTTWorker] Auto-timeout tercapai ({self.no_speech_timeout_sec}s hening). Menghentikan engine...", flush=True)
-                        self.status_changed.emit("Otomatis berhenti: tidak ada input suara selama 1 menit.")
+                        self.status_changed.emit(f"Otomatis berhenti: tidak ada input suara selama {int(self.no_speech_timeout_sec)} detik.")
                         self.auto_timeout.emit()
                         break
 

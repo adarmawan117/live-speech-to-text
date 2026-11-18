@@ -9,6 +9,9 @@ DEFAULT_CONFIG = {
     "language": "id",
     "audio_device": None,
     "typing_mode": "streaming",  # 'streaming' (per-kata) atau 'sentence' (per-kalimat)
+    "auto_start_on_boot": False, # True: Auto launch saat Windows dinyalakan
+    "minimize_to_tray": True,    # True: Minimize ke System Tray; False: Minimize ke Taskbar biasa
+    "auto_stop_enabled": True,   # True: Berhenti otomatis saat hening tanpa suara
     "auto_stop_timeout_sec": 60  # Batas waktu hening (detik) sebelum auto-stop
 }
 

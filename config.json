@@ -1,0 +1,11 @@
+{
+    "hotkey": "F8",
+    "model_size": "small",
+    "language": "id",
+    "audio_device": null,
+    "typing_mode": "streaming",
+    "auto_start_on_boot": false,
+    "minimize_to_tray": true,
+    "auto_stop_enabled": true,
+    "auto_stop_timeout_sec": 60
+}

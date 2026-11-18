@@ -116,7 +116,8 @@ class FloatingSTTWindow(QWidget):
         self.btn_minimize.setIconSize(QSize(14, 14))
         self.btn_minimize.setFixedSize(26, 26)
         self.btn_minimize.setCursor(Qt.PointingHandCursor)
-        self.btn_minimize.setToolTip("Minimize ke System Tray")
+        min_tip = "Minimize ke System Tray" if self.config.get("minimize_to_tray", True) else "Minimize ke Taskbar"
+        self.btn_minimize.setToolTip(min_tip)
         self.btn_minimize.setStyleSheet("""
             QPushButton {
                 background: transparent;
@@ -166,7 +167,7 @@ class FloatingSTTWindow(QWidget):
         self.layout_root.addWidget(self.container)
 
         # Hubungkan tombol window
-        self.btn_minimize.clicked.connect(self.minimize_to_tray)
+        self.btn_minimize.clicked.connect(self.handle_minimize)
         self.btn_close.clicked.connect(self.close_application)
 
     def _build_idle_page(self):
@@ -389,6 +390,15 @@ class FloatingSTTWindow(QWidget):
             else:
                 self.restore_from_tray()
 
+    def handle_minimize(self):
+        """Menangani aksi klik tombol minimize sesuai preferensi pengaturan."""
+        if self.is_recording:
+            return
+        if self.config.get("minimize_to_tray", True):
+            self.minimize_to_tray()
+        else:
+            self.showMinimized()
+
     def minimize_to_tray(self):
         """
         Minimize aplikasi ke System Tray.
@@ -426,7 +436,7 @@ class FloatingSTTWindow(QWidget):
                 pass
 
     def changeEvent(self, event):
-        """Mencegah minimize sistem dari OS jika sedang merekam."""
+        """Mencegah minimize sistem dari OS jika sedang merekam, dan memproses minimize ke tray jika aktif."""
         if event.type() == QEvent.WindowStateChange:
             if self.isMinimized():
                 if self.is_recording:
@@ -434,7 +444,7 @@ class FloatingSTTWindow(QWidget):
                     self.setWindowState(Qt.WindowNoState)
                     event.ignore()
                     return
-                else:
+                elif self.config.get("minimize_to_tray", True):
                     self.minimize_to_tray()
                     event.ignore()
                     return
@@ -478,9 +488,16 @@ class FloatingSTTWindow(QWidget):
         # 3. Jalankan STT Worker di background
         model_name = self.config.get("model_size", "small")
         language = self.config.get("language", "id")
+        auto_stop_enabled = self.config.get("auto_stop_enabled", True)
         timeout_sec = self.config.get("auto_stop_timeout_sec", 60)
 
-        self.worker = LiveSTTWorker(model_size=model_name, language=language, timeout_sec=timeout_sec, parent=self)
+        self.worker = LiveSTTWorker(
+            model_size=model_name,
+            language=language,
+            auto_stop_enabled=auto_stop_enabled,
+            timeout_sec=timeout_sec,
+            parent=self
+        )
         self.worker.interim_text_ready.connect(self.on_interim_text_ready)
         self.worker.final_text_ready.connect(self.on_final_text_ready)
         self.worker.audio_level.connect(self.visualizer.set_level)
@@ -499,7 +516,8 @@ class FloatingSTTWindow(QWidget):
 
         # Aktifkan kembali tombol minimize saat idle
         self.btn_minimize.setEnabled(True)
-        self.btn_minimize.setToolTip("Minimize ke System Tray")
+        min_tip = "Minimize ke System Tray" if self.config.get("minimize_to_tray", True) else "Minimize ke Taskbar"
+        self.btn_minimize.setToolTip(min_tip)
         self.btn_minimize.setStyleSheet("""
             QPushButton {
                 background: transparent;
@@ -518,12 +536,14 @@ class FloatingSTTWindow(QWidget):
         self.virtual_typist.reset()
 
     def on_auto_timeout(self):
-        """Dipanggil otomatis saat tidak ada input suara selama 1 menit."""
+        """Dipanggil otomatis saat tidak ada input suara melebihi batas waktu hening."""
         self.stop_recording()
         if self.tray_icon is not None and self.tray_icon.isVisible():
+            sec = int(self.config.get("auto_stop_timeout_sec", 60))
+            dur_text = f"{sec // 60} menit" if (sec % 60 == 0 and sec >= 60) else f"{sec} detik"
             self.tray_icon.showMessage(
                 "Live Speech to Text",
-                "Transkripsi dihentikan otomatis karena tidak ada input suara selama 1 menit.",
+                f"Transkripsi dihentikan otomatis karena tidak ada input suara selama {dur_text}.",
                 QSystemTrayIcon.Information,
                 3000
             )
@@ -550,6 +570,9 @@ class FloatingSTTWindow(QWidget):
                 self.btn_mic_start.setToolTip(f"Mulai Merekam (atau tekan {new_hotkey})")
             if self.hotkey_manager is not None:
                 self.hotkey_manager.register(new_hotkey)
+            if self.btn_minimize is not None and not self.is_recording:
+                min_tip = "Minimize ke System Tray" if self.config.get("minimize_to_tray", True) else "Minimize ke Taskbar"
+                self.btn_minimize.setToolTip(min_tip)
 
     def open_about(self):
         """Membuka dialog tentang aplikasi."""

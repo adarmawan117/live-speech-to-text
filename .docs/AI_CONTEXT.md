@@ -7,13 +7,14 @@
 ## 1. Tech Stack & Core Libraries
 
 *   **Runtime:** Python 3.13 (64-bit Windows).
-*   **GUI Framework:** `PyQt5` (Frameless, Always On Top, Translucent Background, QStackedWidget).
+*   **GUI Framework:** `PyQt5` (Frameless, Always On Top, Translucent Background, QStackedWidget, QTabWidget, QGraphicsDropShadowEffect).
 *   **Speech-to-Text Engine:** `faster-whisper` (CTranslate2 backend bertenaga Whisper AI).
 *   **GPU Acceleration:** NVIDIA CUDA 12 (`nvidia-cublas-cu12`, `nvidia-cudnn-cu12`, `nvidia-cuda-nvrtc-cu12`) terintegrasi mandiri di virtual environment (`venv`).
 *   **Audio Capture:** `sounddevice` (PortAudio wrapper, 16kHz mono float32, block-sliding buffer).
 *   **Virtual Input / Direct Typing:** Win32 API via `keyboard` & `ctypes` (`SendInput`, `VK_BACK`, `KEYEVENTF_UNICODE`).
 *   **Global Hotkey Listener:** `keyboard` (Win32 low-level keyboard hooks).
 *   **Inter-Process Communication (IPC):** Qt `QLocalServer` & `QLocalSocket` (Windows Named Pipes untuk Single Instance enforcement).
+*   **Windows Startup Management:** `winreg` (Windows Registry `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` untuk auto-launch user-level tanpa UAC).
 *   **Icon & Graphic Rendering:** `PyQt5.QtSvg` (`QSvgRenderer`) dan `QPainter` anti-aliased rendering.
 *   **Packaging & Distribution:**
     *   `Live Speech to Text.vbs` (Silent launcher via `pythonw.exe`).
@@ -37,11 +38,12 @@ live-speech-to-text/
 ├── src/
 │   ├── core/
 │   │   ├── audio_capture.py            # Stream mikrofon via sounddevice (sliding window buffer)
+│   │   ├── autostart_manager.py        # Pengelola Windows Startup Registry (HKCU Run auto-launch hening)
 │   │   ├── config_manager.py           # Single source of truth untuk config.json
 │   │   ├── cuda_setup.py               # Setup environment path DLL CUDA/cuDNN dari venv
 │   │   ├── focus_manager.py            # Windows API: WS_EX_NOACTIVATE & restore active HWND
 │   │   ├── hotkey_manager.py           # Listener shortcut keyboard global (F8, unhook on exit)
-│   │   ├── live_worker.py              # QThread worker: streaming interim & final phrase commit
+│   │   ├── live_worker.py              # QThread worker: streaming interim, final commit & auto-timeout
 │   │   ├── single_instance.py          # IPC Named Pipe controller untuk single instance aplikasi
 │   │   ├── stt_engine.py               # faster-whisper engine wrapper & _ENGINE_CACHE VRAM residency
 │   │   ├── text_cleaner.py             # Sanitasi tanda baca STT & preservasi kata ulang
@@ -52,7 +54,7 @@ live-speech-to-text/
 │       │   └── waveform_visualizer.py  # 19-bar cyan neon dynamic audio waveform
 │       ├── dialogs/
 │       │   ├── about_dialog.py         # Modal kredit developer ADR Programming
-│       │   └── settings_dialog.py      # Modal konfigurasi hotkey, model, bahasa, mic, mode
+│       │   └── settings_dialog.py      # Modal pengaturan dua tab ringkas (Audio, Sistem)
 │       └── floating_window.py          # Jendela utama dual-state (Idle vs Recording) + System Tray
 ├── main.py                             # Entry point aplikasi (URUTAN IMPORT SANGAT KRUSIAL!)
 ├── run.bat                             # Launcher terminal CMD (auto-close exit code 0)
@@ -60,7 +62,8 @@ live-speech-to-text/
 ├── Setup.bat                           # Installer shortcut Desktop & Start Menu
 ├── build_installer.bat                 # Script kompilasi Inno Setup compiler (ISCC.exe)
 ├── installer.iss                       # Inno Setup 6 compilation blueprint
-└── requirements.txt                    # Dependensi runtime lengkap
+├── requirements.txt                    # Dependensi runtime lengkap
+└── README.md                           # Dokumentasi resmi pengguna & instalasi
 ```
 
 ---
@@ -160,23 +163,25 @@ Transkripsi suara real-time mengimplementasikan arsitektur dua fase (*dual-phase
     2. Di `run.bat`, gunakan `if errorlevel 1 pause`. Jika exit code normal (0), CMD otomatis menutup tuntas.
     3. Untuk pengguna umum, sediakan `Live Speech to Text.vbs` yang meluncurkan aplikasi via `pythonw.exe` (`IMAGE_SUBSYSTEM_WINDOWS_GUI`) tanpa membuka konsol sama sekali.
 
-### M. System Tray & Strict Minimize Protection
+### M. System Tray & Strict Minimize Protection (Tray vs Taskbar)
 *   **The Rule:**
-    *   Aplikasi diminimize masuk ke System Tray (Taskbar kanan bawah).
-    *   **DILARANG BISA DIMINIMIZE saat fitur transkripsi sedang aktif (`Start`/Recording).**
+    *   Pengguna dapat memilih perilaku tombol minimize (`—`) melalui pengaturan: **Masuk ke System Tray** (default) atau **Minimize ke Taskbar (Icon Biasa)**.
+    *   **DILARANG BISA DIMINIMIZE saat fitur transkripsi sedang aktif (`Start`/Recording)**, apa pun mode minimize yang dipilih.
     *   Minimize hanya boleh dilakukan saat mode Idle/tidak merekam.
 *   **The Fix:** Diimplementasikan 3 lapis di [floating_window.py](../src/gui/floating_window.py):
-    1. UI Level: `self.btn_minimize.setEnabled(False)` saat `start_recording()`, diaktifkan kembali saat `stop_recording()`.
-    2. Method Level: `minimize_to_tray()` langsung `return` jika `self.is_recording == True`.
-    3. OS Event Level: `changeEvent(QEvent.WindowStateChange)` mengintersepsi event minimize dari sistem OS. Jika `self.is_recording`, tolak dengan `self.setWindowState(Qt.WindowNoState)` dan `event.ignore()`.
+    1. UI Level: `self.btn_minimize.setEnabled(False)` saat `start_recording()`, diaktifkan kembali saat `stop_recording()`. Tooltip tombol disesuaikan dinamis ("Minimize ke System Tray" vs "Minimize ke Taskbar").
+    2. Method Level: `handle_minimize()` dan `minimize_to_tray()` langsung `return` jika `self.is_recording == True`.
+    3. OS Event Level: `changeEvent(QEvent.WindowStateChange)` mengintersepsi event minimize dari sistem OS. Jika `self.is_recording`, tolak dengan `self.setWindowState(Qt.WindowNoState)` dan `event.ignore()`. Jika idle dan `minimize_to_tray` aktif, alihkan ke tray; jika idle dan taskbar mode aktif, izinkan minimize standar OS.
 
-### N. Form Element Sizing & Font Clipping di PyQt5 (QSS Quirk)
-*   **The Bug:** Di Qt Stylesheet, menerapkan `padding` pada `QComboBox` atau `QPushButton` tanpa menentukan tinggi elemen (`min-height` atau `setFixedHeight`) menyebabkan area teks terhimpit secara vertikal, memotong bagian bawah huruf (*descenders* seperti 'g', 'j', 'p', 'y').
+### N. Form Element Sizing & Font Clipping di PyQt5 (QSS Quirk & Compact Tab Styling)
+*   **The Bug:** Di Qt Stylesheet, menerapkan `padding` pada `QComboBox`, `QPushButton`, atau `QTabBar::tab` tanpa menentukan ukuran minimum menyebabkan teks terpotong (*clipped*), baik secara vertikal (huruf 'g', 'j', 'p', 'y') maupun horizontal pada tab bar.
 *   **The Fix:**
     1. Semua input `QComboBox` dan action `QPushButton` wajib memiliki `setFixedHeight(38)` atau `min-height: 38px`.
     2. Atur padding horizontal saja: `padding-left: 12px; padding-right: 32px;`.
-    3. Ukuran modal `SettingsDialog` dibuat lapang: **`400 × 530 px`** untuk mencegah layout menyempit.
-    4. Indikator radio button di QSS: Jangan gunakan border tebal (misal 5px) pada indikator lingkaran karena Qt box model merendernya menjadi kotak bersudut tumpul (*rounded rect*). Gunakan PNG anti-aliased beresolusi pas yang di-load via path absolut: `image: url("{radio_checked_path}");`.
+    3. Dialog pengaturan [settings_dialog.py](../src/gui/dialogs/settings_dialog.py) menggunakan `QTabWidget` modern dua tab berdimensi lapang **`440 × 560 px`** dengan label ringkas satu kata (**Audio** dan **Sistem**).
+    4. Tab styling diatur kompak dan proporsional dengan `min-width: 68px; min-height: 28px; padding: 3px 14px;` serta inisialisasi font `QFont("Segoe UI", 9)` langsung pada `tabBar()` untuk memastikan ukuran text metrics akurat tanpa memotong teks tab.
+    5. Indikator radio button di QSS: Gunakan PNG anti-aliased beresolusi pas yang di-load via path absolut: `image: url("{radio_checked_path}");`.
+    6. Dropdown dinamis: saat auto-stop diubah ke nonaktif, combo batas waktu timeout otomatis di-disable (`setEnabled(False)`) dan label diberi warna teks redup (`#4f627d`).
 
 ### O. Waveform Visualizer Mathematics (`waveform_visualizer.py`)
 Visualizer 19-bar cyan neon menggunakan formula kurva Gaussian dan modulasi sinus 30 FPS:
@@ -199,21 +204,21 @@ Visualizer 19-bar cyan neon menggunakan formula kurva Gaussian dan modulasi sinu
 *   Folder `Output/` dan file binary setup `.exe` wajib dikarantina di `.gitignore`.
 *   `PrivilegesRequired=lowest` dipasang agar instalasi tidak memicu popup UAC Windows Administrator jika diinstal di tingkat pengguna.
 
-### R. Auto-Stop Silence Timeout (60 Detik Resource Saver)
+### R. Auto-Stop Silence Timeout (Resource Saver)
 *   **The Problem:** Jika pengguna lupa menekan tombol Stop/End atau shortcut global, proses audio recording dan model Whisper tetap aktif di background, membebani utilisasi GPU/CPU komputer pengguna.
 *   **The Fix:**
     1. Di [live_worker.py](../src/core/live_worker.py), catat `last_speech_time = time.time()` setiap kali amplitudo `rms > silence_threshold` terdeteksi.
-    2. Saat kondisi hening (`not is_speaking`) dan `(current_time - last_speech_time) >= self.no_speech_timeout_sec` (default 60.0 detik):
+    2. Pengguna dapat mengaktifkan/menonaktifkan fitur ini melalui `"auto_stop_enabled": True/False` dan memilih durasi timeout `"auto_stop_timeout_sec": 30/45/60/120/180/300`.
+    3. Saat kondisi hening (`not is_speaking`), `auto_stop_enabled == True`, dan `(current_time - last_speech_time) >= self.no_speech_timeout_sec`:
        - Pancarkan sinyal `self.auto_timeout.emit()`.
-       - Update status info `"Otomatis berhenti: tidak ada input suara selama 1 menit."`.
-       - Break dari audio loop dan hentikan stream PortAudio.
-    3. Di [floating_window.py](../src/gui/floating_window.py), slot `on_auto_timeout()` memanggil `self.stop_recording()`, mengembalikan tampilan ke halaman Idle (ikon mic bulat biru), mengaktifkan kembali tombol minimize, dan memunculkan notifikasi balon tray `showMessage()` di Windows.
-    4. Nilai timeout dapat dikonfigurasi melalui `"auto_stop_timeout_sec": 60` di [config_manager.py](../src/core/config_manager.py).
+       - Update status info `"Otomatis berhenti: tidak ada input suara selama X detik."`.
+       - Break dari audio loop dan hentikan stream PortAudio secara tuntas.
+    4. Di [floating_window.py](../src/gui/floating_window.py), slot `on_auto_timeout()` memanggil `self.stop_recording()`, mengembalikan tampilan ke halaman Idle (ikon mic bulat biru), mengaktifkan kembali tombol minimize, dan memunculkan notifikasi balon tray `showMessage()` di Windows dengan format durasi ramah pengguna (`X menit` atau `X detik`).
 
 ### S. Single Instance Application & IPC Named Pipe (`single_instance.py`)
 *   **The Goal:** Mencegah pengguna membuka lebih dari satu instance aplikasi yang dapat menyebabkan perebutan port audio mikrofon, duplikasi global keyboard hook `F8`, dan pemborosan VRAM GPU Whisper.
 *   **The Mechanism:**
-    1. Menggunakan protokol **Windows Named Pipe** via `QLocalServer` dan `QLocalSocket` di [src/core/single_instance.py](../src/core/single_instance.py) dengan server identifier `LiveSpeechToText_SingleInstance_Server`.
+    1. Menggunakan protokol **Windows Named Pipe** via `QLocalServer` dan `QLocalSocket` di [single_instance.py](../src/core/single_instance.py) dengan server identifier `LiveSpeechToText_SingleInstance_Server`.
     2. Saat aplikasi baru diluncurkan (`main.py`):
        - Hubungkan `QLocalSocket` ke server.
        - Jika terhubung (`waitForConnected(500) == True`), berarti ada instance yang sudah aktif.
@@ -223,6 +228,14 @@ Visualizer 19-bar cyan neon menggunakan formula kurva Gaussian dan modulasi sinu
        - `SingleInstanceController.message_received` terhubung ke `window.restore_from_tray()`.
        - Jika jendela sedang diminimize (`isMinimized()`), kembalikan status jendela dengan `setWindowState`.
        - Tampilkan jendela (`show()`), angkat ke tumpukan teratas (`raise_()`), aktifkan (`activateWindow()`), serta panggil `ShowWindow(hwnd, SW_RESTORE)` dan `SetForegroundWindow(hwnd)` via Win32 API untuk memastikan jendela tampil di layar pengguna.
+
+### T. Windows Startup Registry (Auto-Launch Boot Management)
+*   **The Goal:** Memungkinkan pengguna menyalakan aplikasi secara otomatis ketika Windows boot tanpa menampilkan jendela CMD terminal yang mengganggu.
+*   **The Mechanism:**
+    1. Menggunakan Windows Registry `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` melalui modul [autostart_manager.py](../src/core/autostart_manager.py) dengan registry key `LiveSpeechToText_ADR`.
+    2. Berjalan di tingkat pengguna (`HKEY_CURRENT_USER`), sehingga **TIDAK memerlukan elevasi Administrator (UAC)**.
+    3. Perintah eksekusi mengarah ke launcher VBScript: `wscript.exe "{path}\Live Speech to Text.vbs"`, menjamin aplikasi mulai sepenuhnya hening di latar belakang tanpa kilatan konsol Command Prompt.
+    4. Status registry otomatis disinkronisasi ketika pengguna menekan tombol "Simpan" di dialog Pengaturan.
 
 ---
 
@@ -241,7 +254,7 @@ Aplikasi ini menggunakan model multi-threading non-blocking yang ketat:
    ├── WhisperModel (CUDA float16 / CPU int8 via _ENGINE_CACHE)
    ├── RMS Audio Level Calculation
    ├── Dual-phase Transcription (Interim vs Commit)
-   └── 60s Silence Timeout Watchdog (auto-timeout logic)
+   └── Configurable Silence Timeout Watchdog (30s-300s or disabled)
        │
        │ (PyQt Signals: interim_text_ready, final_text_ready, audio_level, auto_timeout)
        ▼
@@ -251,6 +264,8 @@ Aplikasi ini menggunakan model multi-threading non-blocking yang ketat:
    ├── FocusManager (Preserve & restore target application HWND, WS_EX_NOACTIVATE)
    ├── VirtualTypist (Win32 LCP differential keystroke execution via SendInput)
    ├── SingleInstanceController (QLocalServer IPC: restore_from_tray on duplicate launch)
+   ├── AutostartManager (HKCU Run Windows Registry synchronization)
+   ├── SettingsDialog (Two-Tab QTabWidget: Audio, Sistem)
    └── SystemTrayIcon (QSystemTrayIcon: minimize-to-tray & auto-stop balloon alerts)
        │
        ▼
@@ -272,6 +287,9 @@ File `config.json` bertindak sebagai *single source of truth* untuk pengaturan p
     "language": "id",
     "audio_device": null,
     "typing_mode": "streaming",
+    "auto_start_on_boot": false,
+    "minimize_to_tray": true,
+    "auto_stop_enabled": true,
     "auto_stop_timeout_sec": 60
 }
 ```
@@ -281,7 +299,10 @@ File `config.json` bertindak sebagai *single source of truth* untuk pengaturan p
 *   `language`: Kode bahasa ISO 639-1 (`"id"` untuk Indonesia, `"en"` untuk Inggris, `null` untuk auto-detect).
 *   `audio_device`: Indeks integer mic dari `sounddevice.query_devices()` atau `null` untuk default sistem.
 *   `typing_mode`: `"streaming"` (pengetikan live kata demi kata) atau `"sentence"` (ketik per-frase saat jeda).
-*   `auto_stop_timeout_sec`: Integer batas waktu hening tanpa suara sebelum proses transkripsi berhenti otomatis (default `60` detik).
+*   `auto_start_on_boot`: Boolean (`true` / `false`) untuk menjalankan aplikasi otomatis saat Windows boot.
+*   `minimize_to_tray`: Boolean (`true`: sembunyi ke System Tray, `false`: minimize ke Taskbar biasa).
+*   `auto_stop_enabled`: Boolean (`true` / `false`) untuk mengaktifkan/menonaktifkan fitur auto-stop saat hening.
+*   `auto_stop_timeout_sec`: Integer durasi hening dalam detik sebelum engine berhenti (`30`, `45`, `60`, `120`, `180`, `300`).
 
 ---
 
@@ -310,15 +331,16 @@ Jika diminta menambahkan dialog baru, komponen, atau styling:
     *   Cyan Accent / Waveform: `#00d2ff`
     *   Primary Blue Gradient: `qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1a62f5, stop:1 #2779ff)`
     *   Recording Red Gradient: `qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #e63946, stop:1 #ff4757)`
-    *   Primary Text: `#ffffff`, Secondary Text: `#8fa0bc` / `#94a3b8`
+    *   Primary Text: `#ffffff`, Secondary Text: `#8fa0bc` / `#94a3b8`, Disabled Text: `#4f627d`
 
 2.  **No Emojis Rule & Pure Inline SVG Icons:**
     *   **DILARANG KERAS** menggunakan emoji teks (misal 🎙️, ⚙️, ℹ️, ▶️, ⏹️) di antarmuka pengguna!
-    *   Semua icon adalah string inline SVG di [src/gui/components/icons.py](../src/gui/components/icons.py) yang dirender transparan via `QSvgRenderer`. Pola ini menjamin tidak ada aset file eksternal yang hilang dan memungkinkan injeksi warna heksadesimal dinamis saat runtime.
+    *   Semua icon adalah string inline SVG di [icons.py](../src/gui/components/icons.py) yang dirender transparan via `QSvgRenderer`. Pola ini menjamin tidak ada aset file eksternal yang hilang dan memungkinkan injeksi warna heksadesimal dinamis saat runtime.
 
 3.  **Hero Circular Mic Button:**
     *   Tombol utama di layar Idle adalah icon mikrofon melingkar (`86 × 86 px`, `border-radius: 43px`) di tengah jendela, bukan tombol bar memanjang.
     *   Dimensi default Floating Window: **`320 × 270 px`**.
+    *   Dimensi default Settings Dialog: **`440 × 560 px`** (terbagi atas dua tab ringkas: **Audio** dan **Sistem**).
 
 ---
 
@@ -345,15 +367,22 @@ Jika di masa depan Anda perlu memodifikasi atau menguji fungsi tertentu secara t
     .\venv\Scripts\python.exe -c "from src.core.single_instance import SingleInstanceController; s = SingleInstanceController(); print('Another instance running:', s.is_another_instance_running())"
     # Ekspektasi: False (jika tidak ada instance) atau True (jika aplikasi sedang berjalan)
     ```
-5.  **Uji Coba Konfigurasi Auto-Stop Timeout:**
+5.  **Uji Coba Konfigurasi Konfigurasi Lengkap (config.json):**
     ```powershell
-    .\venv\Scripts\python.exe -c "from src.core.config_manager import load_config; print('Auto-Stop Timeout:', load_config().get('auto_stop_timeout_sec', 60), 'detik')"
-    # Ekspektasi: Auto-Stop Timeout: 60 detik
+    .\venv\Scripts\python.exe -c "from src.core.config_manager import load_config; cfg = load_config(); print('Autostart:', cfg.get('auto_start_on_boot')); print('Minimize Tray:', cfg.get('minimize_to_tray')); print('Auto-Stop:', cfg.get('auto_stop_enabled'), cfg.get('auto_stop_timeout_sec'), 'detik')"
     ```
 6.  **Uji Coba Ketersediaan System Tray Windows:**
     ```powershell
     .\venv\Scripts\python.exe -c "from PyQt5.QtWidgets import QApplication, QSystemTrayIcon; import sys; app = QApplication(sys.argv); print('System Tray Available:', QSystemTrayIcon.isSystemTrayAvailable())"
     # Ekspektasi: System Tray Available: True
+    ```
+7.  **Uji Coba Auto-Start Windows Registry (Write, Read, & Delete):**
+    ```powershell
+    .\venv\Scripts\python.exe -c "from src.core.autostart_manager import is_autostart_enabled, set_autostart; print('Initial:', is_autostart_enabled()); set_autostart(True); print('Set True:', is_autostart_enabled()); set_autostart(False); print('Set False:', is_autostart_enabled())"
+    ```
+8.  **Uji Coba Kompilasi Seluruh Kode:**
+    ```powershell
+    .\venv\Scripts\python.exe -m compileall src main.py
     ```
 
 ---
