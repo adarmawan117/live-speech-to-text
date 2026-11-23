@@ -39,6 +39,8 @@ class FloatingSTTWindow(QWidget):
         self.hotkey_manager = None
         self.tray_icon = None
         self.tray_menu = None
+        self.icon_idle = None
+        self.icon_recording = None
         self.is_recording = False
         self._drag_position = QPoint()
 
@@ -79,7 +81,12 @@ class FloatingSTTWindow(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setFixedSize(320, 270)
         if os.path.exists(ICON_PATH):
-            self.setWindowIcon(QIcon(ICON_PATH))
+            self.icon_idle = QIcon(ICON_PATH)
+        else:
+            self.icon_idle = get_svg_icon("mic", color="#00d2ff", size=32)
+
+        self.icon_recording = get_svg_icon("stop_badge", color="#e63946", size=32)
+        self.setWindowIcon(self.icon_idle)
 
     def _init_ui(self):
         self.layout_root = QVBoxLayout(self)
@@ -338,8 +345,7 @@ class FloatingSTTWindow(QWidget):
         if not QSystemTrayIcon.isSystemTrayAvailable():
             return
 
-        tray_icon_img = QIcon(ICON_PATH) if os.path.exists(ICON_PATH) else get_svg_icon("mic", color="#00d2ff", size=32)
-        self.tray_icon = QSystemTrayIcon(tray_icon_img, self)
+        self.tray_icon = QSystemTrayIcon(self.icon_idle, self)
         self.tray_icon.setToolTip("Live Speech to Text - ADR Programming")
 
         self.tray_menu = QMenu(self)
@@ -477,6 +483,13 @@ class FloatingSTTWindow(QWidget):
         self.stacked_widget.setCurrentWidget(self.page_recording)
         self.visualizer.start()
 
+        # Ubah icon header bar, tray icon, dan window icon ke mode stop/merekam
+        self.lbl_header_icon.setPixmap(get_svg_pixmap("stop", color="#ff4757", size=15))
+        if self.tray_icon is not None:
+            self.tray_icon.setIcon(self.icon_recording)
+            self.tray_icon.setToolTip("Live Speech to Text - Merekam (Listening...)")
+        self.setWindowIcon(self.icon_recording)
+
         # ATURAN: Matikan tombol minimize saat merekam
         self.btn_minimize.setEnabled(False)
         self.btn_minimize.setToolTip("Tidak dapat minimize saat sedang merekam")
@@ -513,6 +526,13 @@ class FloatingSTTWindow(QWidget):
         self.visualizer.stop()
         self._update_container_style(is_recording=False)
         self.stacked_widget.setCurrentWidget(self.page_idle)
+
+        # Kembalikan icon header bar, tray icon, dan window icon ke mode idle/mic
+        self.lbl_header_icon.setPixmap(get_svg_pixmap("mic", color="#00d2ff", size=16))
+        if self.tray_icon is not None:
+            self.tray_icon.setIcon(self.icon_idle)
+            self.tray_icon.setToolTip("Live Speech to Text - ADR Programming")
+        self.setWindowIcon(self.icon_idle)
 
         # Aktifkan kembali tombol minimize saat idle
         self.btn_minimize.setEnabled(True)

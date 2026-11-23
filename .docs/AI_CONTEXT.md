@@ -50,12 +50,12 @@ live-speech-to-text/
 │   │   └── virtual_typist.py           # LCP differential typist ke kursor Windows aktif
 │   └── gui/
 │       ├── components/
-│       │   ├── icons.py                # Generator icon vektor SVG murni (tanpa file eksternal)
+│       │   ├── icons.py                # Generator icon vektor SVG murni (mic, mic_badge, stop, stop_badge, dll.)
 │       │   └── waveform_visualizer.py  # 19-bar cyan neon dynamic audio waveform
 │       ├── dialogs/
 │       │   ├── about_dialog.py         # Modal kredit developer ADR Programming
 │       │   └── settings_dialog.py      # Modal pengaturan dua tab ringkas (Audio, Sistem)
-│       └── floating_window.py          # Jendela utama dual-state (Idle vs Recording) + System Tray
+│       └── floating_window.py          # Jendela utama dual-state (Idle vs Recording) + System Tray + Dynamic Icons
 ├── main.py                             # Entry point aplikasi (URUTAN IMPORT SANGAT KRUSIAL!)
 ├── run.bat                             # Launcher terminal CMD (auto-close exit code 0)
 ├── Live Speech to Text.vbs             # Launcher hening tanpa jendela hitam CMD
@@ -166,6 +166,14 @@ Transkripsi suara real-time mengimplementasikan arsitektur dua fase (*dual-phase
 ### M. System Tray & Strict Minimize Protection (Tray vs Taskbar)
 *   **The Rule:**
     *   Pengguna dapat memilih perilaku tombol minimize (`—`) melalui pengaturan: **Masuk ke System Tray** (default) atau **Minimize ke Taskbar (Icon Biasa)**.
+    *   **Ikon Status Dinamis Terpadu**:
+        - Saat Idle: Ikon header bar berupa mikrofon cyan (`#00d2ff`), ikon taskbar/tray berupa `icon_idle` (badge mikrofon cyan). Tooltip tray: `"Live Speech to Text - ADR Programming"`.
+        - Saat Merekam (`start_recording`): Ikon header bar otomatis berganti menjadi ikon stop merah (`stop`, `#ff4757`), ikon taskbar dan System Tray berganti menjadi badge stop merah (`stop_badge`, bulatan merah `#e63946` dengan kotak putih rounded di tengahnya). Tooltip tray berubah menjadi `"Live Speech to Text - Merekam (Listening...)"`.
+        - Saat Selesai / Auto-Timeout (`stop_recording`): Seluruh ikon dan tooltip otomatis dipulihkan kembali ke status idle.
+    *   **Ikon Status Dinamis Terpadu**:
+        - Saat Idle: Ikon header bar berupa mikrofon cyan (`#00d2ff`), ikon taskbar/tray berupa `icon_idle` (badge mikrofon cyan). Tooltip tray: `"Live Speech to Text - ADR Programming"`.
+        - Saat Merekam (`start_recording`): Ikon header bar otomatis berganti menjadi ikon stop merah (`stop`, `#ff4757`), ikon taskbar dan System Tray berganti menjadi badge stop merah (`stop_badge`, bulatan merah `#e63946` dengan kotak putih rounded di tengahnya). Tooltip tray berubah menjadi `"Live Speech to Text - Merekam (Listening...)"`.
+        - Saat Selesai / Auto-Timeout (`stop_recording`): Seluruh ikon dan tooltip otomatis dipulihkan kembali ke status idle.
     *   **DILARANG BISA DIMINIMIZE saat fitur transkripsi sedang aktif (`Start`/Recording)**, apa pun mode minimize yang dipilih.
     *   Minimize hanya boleh dilakukan saat mode Idle/tidak merekam.
 *   **The Fix:** Diimplementasikan 3 lapis di [floating_window.py](../src/gui/floating_window.py):
@@ -341,6 +349,10 @@ Jika diminta menambahkan dialog baru, komponen, atau styling:
     *   Tombol utama di layar Idle adalah icon mikrofon melingkar (`86 × 86 px`, `border-radius: 43px`) di tengah jendela, bukan tombol bar memanjang.
     *   Dimensi default Floating Window: **`320 × 270 px`**.
     *   Dimensi default Settings Dialog: **`440 × 560 px`** (terbagi atas dua tab ringkas: **Audio** dan **Sistem**).
+
+4.  **Dual-State Status Indicators:**
+    *   Mode Idle: Aksen cyan neon (`#00d2ff`), ikon mikrofon di header & taskbar/tray.
+    *   Mode Merekam: Aksen border merah glowing (`#ff4757`), animasi gelombang suara aktif, dan ikon berganti otomatis menjadi badge stop merah (`stop_badge`).
 
 ---
 

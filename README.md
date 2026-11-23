@@ -17,6 +17,7 @@ Aplikasi Desktop Floating Helper untuk pengetikan suara (*Voice Typing*) langsun
   - Pilihan perilaku tombol minimize (`—`) pada menu pengaturan:
     - **Masuk ke System Tray**: Jendela disembunyikan sepenuhnya ke tray pojok kanan taskbar Windows dengan notifikasi balon informatif.
     - **Minimize ke Taskbar (Icon Biasa)**: Jendela diminimalkan ke taskbar biasa seperti aplikasi desktop standar.
+  - **Ikon Status Dinamis**: Saat mode santai/idle, ikon di header jendela dan System Tray menampilkan **mikrofon cyan**. Saat sedang merekam (*Listening...*), ikon otomatis berganti menjadi **ikon stop merah** (seperti tombol End) sebagai indikator visual aktif di taskbar/tray.
   - **Proteksi Rekam Mutlak**: Aplikasi dilarang dan tidak bisa diminimize saat fitur transkripsi sedang aktif (*Listening.../Recording*). Tombol minimize otomatis dinonaktifkan untuk mencegah jendela terminimize secara tidak sengaja di tengah sesi pengetikan. Minimize hanya dapat dilakukan saat mode santai/idle.
   - Klik atau double-click icon tray untuk memunculkan kembali jendela ke layar.
 - **Single Instance Application**:
@@ -134,12 +135,13 @@ File installer setup berekstensi `.exe` akan dibuat di folder `Output\LiveSpeech
    - Atau klik **tombol mikrofon besar** melingkar di tengah jendela Floating App.
 4. **Mode Mendengarkan (*Listening...*)**:
    - Tampilan jendela otomatis beralih menampilkan visualizer gelombang suara neon cyan yang bergerak dinamis mengikuti desibel suara Anda.
+   - Ikon di header jendela, taskbar, serta System Tray otomatis berganti menjadi **ikon stop merah** sebagai penanda visual jelas bahwa mikrofon sedang aktif mendengarkan/merekam.
 5. **Berbicara Secara Alami**:
    - Mulailah berbicara. Kata-kata yang Anda ucapkan akan langsung terketik secara *real-time* tepat di posisi kursor aktif Anda.
    - Algoritma diferensial *Longest Common Prefix (LCP)* memastikan proses pengetikan halus tanpa kedipan (*flickering*).
 6. **Selesai / Menghentikan Rekam**:
    - Tekan tombol **`F8`** kembali, atau klik tombol **`■ End`** pada jendela floating.
-   - Jendela kembali ke mode idle dan kalimat terakhir terkunci rapi di posisi kursor.
+   - Jendela kembali ke mode idle, seluruh ikon (header, taskbar, dan System Tray) otomatis pulih kembali ke **mikrofon cyan**, dan kalimat terakhir terkunci rapi di posisi kursor.
 7. **Menu Pengaturan Terpadu (Ikon ⚙)**:
    - Klik ikon gerigi (⚙) di pojok kiri bawah jendela untuk membuka modal pengaturan dua tab:
      - **Tab Audio**: Atur Model Whisper (`small`, `base`, `medium`, `tiny`), Bahasa Transkripsi (`id`, `en`, atau Auto-Detect), Perangkat Mikrofon, dan Mode Pengetikan (*Streaming* per kata atau *Per penggalan kalimat*).
